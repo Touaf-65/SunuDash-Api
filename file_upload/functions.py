@@ -11,19 +11,17 @@ def open_excel_csv(file):
         return Response({"error": "Le fichier récap doit être au format Excel (xlsx/xls) ou CSV."},)
     return df
 
-def replace_invalid_numeric_values(rec,column):
-    rec[column] = pd.to_numeric(rec[column], errors='coerce').fillna(0)
+def replace_invalid_numeric_values(df,column):
+    df[column] = pd.to_numeric(df[column], errors='coerce').fillna(0)
 
 
-def convert_dates_datetime(rec, column):
-    column_type = rec[column].dtype
+def convert_dates_datetime(df, column):
+    column_type = df[column].dtype
 
     if column_type == 'object':
-        rec[column] = pd.to_datetime(rec[column], errors='coerce')
+        df[column] = pd.to_datetime(df[column], errors='coerce')
     elif column_type in ['int64', 'int32']:
-        rec[column] = pd.to_datetime(rec[column], origin='1899-12-30', unit='D')
-    else:
-        pass
-    return rec
+        df[column] = pd.to_datetime(df[column], origin='1899-12-30', unit='D')
+    return df
 
     
