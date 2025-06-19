@@ -21,8 +21,7 @@ def clean_recap_data(df):
     return df
 
 
-def clean_statistic_file(file):
-    df = pd.read_excel(file)
+def clean_statistic_data(df):
 
     df.dropna(how='all')
 

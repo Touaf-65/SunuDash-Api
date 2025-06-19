@@ -7,8 +7,6 @@ def open_excel_csv(file):
         df = pd.read_excel(file)
     elif file.name.endswith('.csv'):
         df = pd.read_csv(file)
-    else:
-        return Response({"error": "Le fichier récap doit être au format Excel (xlsx/xls) ou CSV."},)
     return df
 
 def replace_invalid_numeric_values(df,column):
