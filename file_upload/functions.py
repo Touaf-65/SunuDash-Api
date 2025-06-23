@@ -26,7 +26,7 @@ def concat_uniques(series):
         return ', '.join(str(x) for x in series.dropna().unique())
 
 
-def grouper_static_by_sinistre(df):
+def group_statistic_by_sinistre(df):
 
     grouped = df.groupby('Numero de sinistre').agg({
         'Nom bénéficiaire': 'first',
@@ -48,7 +48,7 @@ def convert_to_upper(df, column):
     df[column] = df[column].str.upper()
     return df
 
-def verifier_conformite(row):
+def check_conformity(row):
     if -5 < abs(row["Écart facturé"]) < 5 and -5 < abs(row["Écart remboursé"]) < 5:
         return "Conforme"
     else:
@@ -81,3 +81,51 @@ def delete_conform_rows(df):
     df_filtre = df[~((df['Total facturé'] == df['Total facturé rapprochement']) & 
                      (df['Total remboursé'] == df['Total remboursé rapprochement']))]
     return df_filtre
+
+def string_to_upper(df):
+    for col in df.columns:
+        if df[col].dtype == 'object':  
+            df[col] = df[col].str.upper()
+
+    return df
+
+def generate_observation(row):
+    observations = []
+
+    ecart_facture = row["Écart facturé"]
+    ecart_rembourse = row["Écart remboursé"]
+    
+    if ecart_facture > 0 and ecart_rembourse == 0:
+        observations.append("Montant facturé statistique < montant facturé rapprochement.")
+    
+    if ecart_facture < 0 and ecart_rembourse == 0:
+        observations.append("Montant facturé statistique < montant facturé rapprochement.")
+    
+    if ecart_rembourse > 0 and ecart_facture == 0:
+        observations.append("Montant remboursé statistique > montant remboursé rapprochement.")
+    
+    if ecart_rembourse < 0 and ecart_facture == 0:
+        observations.append("Montant remboursé statistique < montant remboursé rapprochement.")
+    
+    if (ecart_facture > 0 and ecart_rembourse < 0) or (ecart_facture > 0 and ecart_rembourse < 0):
+        observations.append("Montants facturés et remboursés non conformes.")
+
+    return "; ".join(observations) if observations else "Non conforme en raison d'écarts."
+
+
+def generate_no_conformity_excel(df, df_stat, df_recap):
+
+    file_name = 'rapports_sinistres.xlsx'
+
+    numeros_sinistre = df['Numéro de sinistre'].unique()
+
+    df_stat_filtered = df_stat[df_stat['Numéro de sinistre'].isin(numeros_sinistre)]
+    df_recap_filtered = df_recap[df_recap['Numéro de sinistre'].isin(numeros_sinistre)]
+
+    try:
+        with pd.ExcelWriter(file_name) as writer:
+            df.to_excel(writer, sheet_name='No Conformité', index=False)
+            df_stat_filtered.to_excel(writer, sheet_name='Statistiques Filtrées', index=False)
+            df_recap_filtered.to_excel(writer, sheet_name='Récapitulatif Filtré', index=False)
+    except Exception as e:
+        return str(e)
