@@ -2,6 +2,15 @@ import pandas as pd
 from rest_framework.response import Response
 
 def open_excel_csv(file):
+    """
+    Opens an Excel or CSV file and loads it into a DataFrame.
+
+    Args:
+        file: The file to open, which can be an Excel file (.xlsx, .xls) or a CSV file (.csv).
+
+    Returns:
+        pd.DataFrame: The DataFrame containing the data from the file.
+    """
 
     if file.name.endswith('.xlsx') or file.name.endswith('.xls'):
         df = pd.read_excel(file)
@@ -10,10 +19,27 @@ def open_excel_csv(file):
     return df
 
 def replace_invalid_numeric_values(df,column):
+    """
+    Replaces non-numeric values in a column with 0.
+
+    Args:
+        df (pd.DataFrame): The DataFrame to modify.
+        column (str): The name of the column to process.
+    """
     df[column] = pd.to_numeric(df[column], errors='coerce').fillna(0)
 
 
 def convert_dates_datetime(df, column):
+    """
+    Converts a column to datetime type.
+
+    Args:
+        df (pd.DataFrame): The DataFrame to modify.
+        column (str): The name of the column to convert.
+
+    Returns:
+        pd.DataFrame: The DataFrame with the converted column.
+    """
     column_type = df[column].dtype
 
     if column_type == 'object':
@@ -23,11 +49,28 @@ def convert_dates_datetime(df, column):
     return df
 
 def concat_uniques(series):
-        return ', '.join(str(x) for x in series.dropna().unique())
+    """
+    Concatenates unique values from a series into a string.
+
+    Args:
+        series (pd.Series): The series to process.
+
+    Returns:
+        str: A string containing the unique values.
+    """
+    return ', '.join(str(x) for x in series.dropna().unique())
 
 
 def group_statistic_by_sinistre(df):
+    """
+    Groups data by claim number and aggregates the information.
 
+    Args:
+        df (pd.DataFrame): The DataFrame to group.
+
+    Returns:
+        pd.DataFrame: A DataFrame grouped by claim number.
+    """
     grouped = df.groupby('Numero de sinistre').agg({
         'Nom bénéficiaire': 'first',
         'Nom Assuré Principal': 'first',
@@ -45,16 +88,44 @@ def group_statistic_by_sinistre(df):
     return grouped
 
 def convert_to_upper(df, column):
+    """
+    Converts all values in a specified column to uppercase.
+
+    Args:
+        df (pd.DataFrame): The DataFrame to modify.
+        column (str): The name of the column to convert.
+
+    Returns:
+        pd.DataFrame: The modified DataFrame.
+    """
     df[column] = df[column].str.upper()
     return df
 
 def check_conformity(row):
+    """
+    Checks the conformity of billed and reimbursed amounts based on defined criteria.
+
+    Args:
+        row (pd.Series): A row of the DataFrame containing the relevant columns.
+
+    Returns:
+        str: 'Conforme' if the row is conforming, 'Non conforme' otherwise.
+    """
     if -5 < abs(row["Écart facturé"]) < 5 and -5 < abs(row["Écart remboursé"]) < 5:
         return "Conforme"
     else:
         return "Non conforme"
 
 def df_no_conformity_by_sinistre(df):
+    """
+    Groups non-conforming data by claim number and aggregates the information.
+
+    Args:
+        df (pd.DataFrame): The DataFrame to process.
+
+    Returns:
+        pd.DataFrame: A DataFrame of non-conforming data grouped by claim number.
+    """
     grouped = df.groupby('Numéro de sinistre').agg({
         'Nom bénéficiaire': 'first',
         'Nom Assuré Principal': 'first',
@@ -78,11 +149,29 @@ def df_no_conformity_by_sinistre(df):
     return grouped
 
 def delete_conform_rows(df):
+    """
+    Deletes conforming rows from the DataFrame.
+
+    Args:
+        df (pd.DataFrame): The DataFrame to filter.
+
+    Returns:
+        pd.DataFrame: The filtered DataFrame without conforming rows.
+    """
     df_filtre = df[~((df['Total facturé'] == df['Total facturé rapprochement']) & 
                      (df['Total remboursé'] == df['Total remboursé rapprochement']))]
     return df_filtre
 
 def string_to_upper(df):
+    """
+    Converts all string values in all object-type columns to uppercase.
+
+    Args:
+        df (pd.DataFrame): The DataFrame to modify.
+
+    Returns:
+        pd.DataFrame: The modified DataFrame.
+    """
     for col in df.columns:
         if df[col].dtype == 'object':  
             df[col] = df[col].str.upper()
@@ -90,6 +179,15 @@ def string_to_upper(df):
     return df
 
 def generate_observation(row):
+    """
+    Generates observations based on discrepancies in billed and reimbursed amounts.
+
+    Args:
+        row (pd.Series): A row of the DataFrame containing the relevant columns.
+
+    Returns:
+        str: A string of observations or a message indicating non-conformity.
+    """
     observations = []
 
     ecart_facture = row["Écart facturé"]
@@ -114,7 +212,17 @@ def generate_observation(row):
 
 
 def generate_no_conformity_excel(df, df_stat, df_recap):
+    """
+    Generates an Excel file with multiple sheets for non-conformity data.
 
+    Args:
+        df (pd.DataFrame): The non-conforming DataFrame.
+        df_stat (pd.DataFrame): The statistics DataFrame.
+        df_recap (pd.DataFrame): The recap DataFrame.
+
+    Returns:
+        str: An error message if an exception occurs, otherwise None.
+    """
     file_name = 'rapports_sinistres.xlsx'
 
     numeros_sinistre = df['Numéro de sinistre'].unique()
