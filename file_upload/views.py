@@ -63,11 +63,76 @@ import pandas as pd
 from rest_framework.response import Response
 from django.core.files.storage import default_storage
 from .functions import open_excel_csv
+from .analysis import clean_recap_data, clean_statistic_data, compare_data
 
 import tempfile
 
 
 
+class UploadAndValidateFiles(APIView):
+    #permission_classes = [IsAuthenticated]
+
+    expected_stat_headers = [
+        "Nom Employeur", "Broker Name", "Nom bénéficiaire", "Acte_Contraté_Assuré",
+        "Statut Assuré", "Numero de police", "Nom Assuré Principal", "Nom du partenaire",
+        "Adresse du Partenaire", "Pays du partenaire", "Numero de sinistre", "Statut",
+        "Date de sinistre", "Date de règlement", "Categorie d'acte", "Famille Acte",
+        "Nom Acte", "Montant facturé", "N°cheque/Autre_Moyent_de_payement",
+        "Note Générale", "Numero de Facture", "Modifié par"
+    ]
+
+    expected_recap_headers = [
+        "reglementId", "date_reglement", "beneficiaire", "N°_Cheque",
+        "autres_Moyen_de_payement", "partnerId", "Assurés_principal", "Employeur",
+        "N°_police", "totalmttreclame", "totalmttrembourse", "NumFacture", "Note"
+    ]
+
+    def post(self, request):
+        # Récupérer les fichiers
+        file_stat = request.FILES.get('file_stat')
+        file_recap = request.FILES.get('file_recap')
+
+        # Vérifier que les fichiers sont fournis
+        if not file_stat or not file_recap:
+            return Response({"error": "Les deux fichiers doivent être fournis."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Lire le fichier statistique et vérifier les en-têtes
+            df_stat = open_excel_csv(file_stat)
+            stat_headers = df_stat.columns.tolist()
+
+            missing_stat_headers = [header for header in self.expected_stat_headers if header not in stat_headers]
+            if missing_stat_headers:
+                return Response({"errors": f"Les en-têtes manquants dans le fichier statistique : {', '.join(missing_stat_headers)}."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+            # Lire le fichier récap et vérifier les en-têtes
+            df_recap = open_excel_csv(file_recap)
+            recap_headers = df_recap.columns.tolist()
+
+            missing_recap_headers = [header for header in self.expected_recap_headers if header not in recap_headers]
+            if missing_recap_headers:
+                return Response({"errors": f"Les en-têtes manquants dans le fichier récap : {', '.join(missing_recap_headers)}."},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+
+            # Intégration de la fonction compare_data
+            comparison_result = compare_data(df_stat, df_recap)
+
+            if isinstance(comparison_result, pd.DataFrame):
+                # Si il y a des non-conformités, renvoyer le DataFrame
+                return Response({"non_conformities": comparison_result.to_dict(orient='records')}) #, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+            return Response({"message": "Les fichiers ont été validés et enregistrés avec succès."}, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+"""
 class UploadAndValidateFiles(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -114,17 +179,23 @@ class UploadAndValidateFiles(APIView):
                 return Response({"errors": f"Les en-têtes manquants dans le fichier récap : {', '.join(missing_recap_headers)}."},
                                 status=status.HTTP_400_BAD_REQUEST)
 
-            # Enregistrer les fichiers dans le modèle File
-            stat_file_instance = File(user=request.user, file=file_stat, file_type='stat')
-            stat_file_instance.save()
+            # Nettoyer les données
+            df_stat = clean_statistic_data(df_stat)
+            df_recap = clean_recap_data(df_recap)
 
-            recap_file_instance = File(user=request.user, file=file_recap, file_type='recap')
-            recap_file_instance.save()
+            # Intégration de la fonction compare_data
+            comparison_result = compare_data(df_stat, df_recap)
 
+            if isinstance(comparison_result, pd.DataFrame):
+                # Si il y a des non-conformités, renvoyer le DataFrame
+                return Response({"non_conformities": comparison_result.to_dict(orient='records')}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Si tout est conforme
             return Response({"message": "Les fichiers ont été validés et enregistrés avec succès."}, status=status.HTTP_201_CREATED)
 
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+"""
 
 
 # class UploadAndValidateFiles(APIView):
