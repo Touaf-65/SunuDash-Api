@@ -117,15 +117,15 @@ class UploadAndValidateFiles(APIView):
 
 
             # Intégration de la fonction compare_data
-            comparison_result = compare_data(df_stat, df_recap)
+            comparison_result, common_range = compare_data(df_stat, df_recap)
 
             if isinstance(comparison_result, pd.DataFrame):
                 # Si il y a des non-conformités, renvoyer le DataFrame
-                return Response({"non_conformities": comparison_result.to_dict(orient='records')}) #, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"date_range_start": {common_range[0]}, "date_range_end": {common_range[1]}, "non_conformities": comparison_result.to_dict(orient='records')}) #, status=status.HTTP_400_BAD_REQUEST)
 
 
 
-            return Response({"message": "Les fichiers ont été validés et enregistrés avec succès."}, status=status.HTTP_201_CREATED)
+            return Response({f"message": "Les fichiers compris entre {common_range[0]} et {common_range[1]} ont été validés et enregistrés avec succès."}, status=status.HTTP_201_CREATED)
 
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -65,6 +65,49 @@ def convert_dates_datetime(df, column):
         raise KeyError(f"Column '{column}' does not exist in DataFrame.")
     return df
 
+import pandas as pd
+
+def get_date_range(df, column):
+    """
+    Returns the date range (min, max) for a specified column in a DataFrame.
+    
+    :param df: The DataFrame to analyze.
+    :param column: The name of the column containing dates.
+    :return: A tuple containing the minimum and maximum dates, or None if the column is not of datetime type.
+    """
+    if df.empty:
+        return None
+    if column not in df.columns:
+        raise ValueError(f"The column '{column}' does not exist in the DataFrame.")
+    if df[column].dtype == 'datetime64[ns]':
+        return (df[column].min(), df[column].max())
+    else:
+        raise TypeError(f"The column '{column}' is not of datetime type.")    
+
+
+def get_common_date_range(range1, range2):
+    """
+    Determines the common date range between two date ranges.
+    
+    :param range1: A tuple containing the (min_date, max_date) from the first date range.
+    :param range2: A tuple containing the (min_date, max_date) from the second date range.
+    :return: A tuple containing the common date range (min_common, max_common), or None if there is no common range.
+    """
+    if range1 is None or range2 is None:
+        return None
+    min1, max1 = range1
+    min2, max2 = range2
+
+    common_min = max(min1, min2)
+    common_max = min(max1, max2)
+
+    if common_min <= common_max:
+        return (common_min, common_max)
+    else:
+        return None
+
+    
+
 def concat_uniques(series):
     """
     Concatenates unique values from a series into a string.

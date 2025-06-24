@@ -1,5 +1,5 @@
 import pandas as pd
-from .functions import replace_invalid_numeric_values, convert_dates_datetime, group_statistic_by_sinistre, string_to_upper, check_conformity, delete_conform_rows, df_no_conformity_by_sinistre, generate_observation, generate_no_conformity_excel, convert_to_upper
+from .functions import replace_invalid_numeric_values, convert_dates_datetime, group_statistic_by_sinistre, string_to_upper, check_conformity, delete_conform_rows, df_no_conformity_by_sinistre, generate_observation, generate_no_conformity_excel, convert_to_upper, get_date_range, get_common_date_range
 
 
 def clean_recap_data(df):
@@ -78,7 +78,7 @@ def compare_data(df_stat, df_recap):
         df_recap (pd.DataFrame): The cleaned recap DataFrame.
 
     Returns:
-        pd.DataFrame or bool: A DataFrame of non-conformities if found, True if no non-conformities exist.
+        pd.DataFrame or bool: A DataFrame of non-conformities if found, True if no non-conformities exist + common date range 
     """
 
     df_stat = clean_statistic_data(df_stat)
@@ -94,12 +94,22 @@ def compare_data(df_stat, df_recap):
     "Numero de sinistre": "Numéro de sinistre",
     })
 
-    df_stat_grouped = group_statistic_by_sinistre(df_stat)
+    recap_range = get_date_range(df_recap, 'date_reglement')
+    stat_range = get_date_range(df_stat, 'Date de règlement')
+
+    common_range = get_common_date_range(stat_range, recap_range)
+
+    print(f"Common range: {common_range}")
+
+    filtered_df_stat = df_stat[(df_stat['Date de règlement']>= common_range[0]) & (df_stat['Date de règlement']<= common_range[1])]
+    filtered_df_recap = df_recap[(df_recap['date_reglement']>= common_range[0]) & (df_recap['date_reglement']<= common_range[1])]
+
+    df_stat_grouped = group_statistic_by_sinistre(filtered_df_stat)
     df_stat_grouped = convert_to_upper(df_stat_grouped, "Numéro de sinistre")
-    df_recap = convert_to_upper(df_recap, "Numéro de sinistre")
+    filtered_df_recap = convert_to_upper(df_recap, "Numéro de sinistre")
 
 
-    df_comparaison = pd.merge(df_stat_grouped, df_recap, on="Numéro de sinistre", how="inner")
+    df_comparaison = pd.merge(df_stat_grouped, filtered_df_recap, on="Numéro de sinistre", how="inner")
 
 
     df_comparaison.drop_duplicates()
@@ -123,6 +133,6 @@ def compare_data(df_stat, df_recap):
             
             # generate_no_conformity_excel(df_no_conformity, df_stat, df_recap)
 
-            return df_no_conformity
+            return df_no_conformity, common_range
         
-    return True
+    return True, common_range
