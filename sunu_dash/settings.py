@@ -25,7 +25,9 @@ SECRET_KEY = "django-insecure-an2hdb&3w=e@l1e0v-h7iv50jjeprqirjng*(sj=^i%$#w8eoq
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+
+#ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['sunudash-api.onrender.com']
 
 
 # Application definition
