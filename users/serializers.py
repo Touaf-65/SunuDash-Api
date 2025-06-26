@@ -3,7 +3,6 @@ from .models import CustomUser, Country
 from .models import CustomUser as User
 from .models import PasswordResetToken
 
-
 class CountrySerializer(serializers.ModelSerializer):
     class Meta:
         model = Country 
@@ -25,15 +24,25 @@ class PasswordResetRequestSerializer(serializers.Serializer):
             raise serializers.ValidationError("User with this email does not exist.")
         return value
 
-    
+
 
 class PasswordResetConfirmSerializer(serializers.Serializer):
     token = serializers.UUIDField()
     new_password = serializers.CharField(write_only=True, min_length=8)
+    confirm_password = serializers.CharField(write_only=True, min_length=8)
 
     def validate_token(self, value):
         if not PasswordResetToken.objects.filter(token=value, user__is_active=True).exists():
             raise serializers.ValidationError("Invalid or expired token.")
         return value
+
+    def validate(self, attrs):
+        if attrs['new_password'] != attrs['confirm_password']:
+            raise serializers.ValidationError("Passwords does not match")
+        
+        return attrs
+
+
+
     
     

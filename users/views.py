@@ -774,7 +774,7 @@ class PasswordResetRequestView(APIView):
             from_email = settings.EMAIL_HOST_USER
             
             token = PasswordResetToken.objects.create(user=user)
-            
+
             reset_link = f"https://sunu-dash.netlify.app/password_reset_confirm/{token.token}/"
             send_mail(
                 'Password Reset Request',
@@ -792,10 +792,13 @@ class PasswordResetConfirmView(APIView):
         serializer = PasswordResetConfirmSerializer(data=request.data)
         if serializer.is_valid():
             token = serializer.validated_data['token']
-            new_password = serializer.validated_data['new_password']
+            new_password = serializer.validated_data['confirm_password']
+            confirm_password = serializer.validated_data['confirm_password']
+            from_email = settings.EMAIL_HOST_USER
 
             try:
                 reset_token = PasswordResetToken.objects.get(token=token)
+                print(reset_token)
                 if reset_token.is_expired():
                     return Response({"error": "Token has expired."}, status=status.HTTP_400_BAD_REQUEST)
             except PasswordResetToken.DoesNotExist:
@@ -807,6 +810,13 @@ class PasswordResetConfirmView(APIView):
 
             reset_token.delete()
 
+            send_mail(
+                'Password Reset ',
+                f'Your password has been reset successfully.',
+                from_email,
+                [user.email],
+                fail_silently=False,
+            )
             return Response({"message": "Password has been reset successfully."}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
