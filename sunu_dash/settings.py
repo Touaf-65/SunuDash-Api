@@ -62,6 +62,7 @@ MIDDLEWARE = [
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:4200",  # URL du frontend Angular
+    "https://sunudash-api.onrender.com"
 ]
 
 ROOT_URLCONF = "sunu_dash.urls"
