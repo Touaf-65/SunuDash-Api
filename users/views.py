@@ -775,7 +775,7 @@ class PasswordResetRequestView(APIView):
             
             token = PasswordResetToken.objects.create(user=user)
 
-            reset_link = f"https://sunu-dash.netlify.app/password_reset_confirm/{token.token}/"
+            reset_link = f"https://sunu-dash.netlify.app/new_password/{token.token}/"
             send_mail(
                 'Password Reset Request',
                 f'Click the link to reset your password: {reset_link}',
