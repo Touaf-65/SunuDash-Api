@@ -62,7 +62,8 @@ MIDDLEWARE = [
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:4200",  # URL du frontend Angular
-    "https://sunudash-api.onrender.com"
+    "https://sunudash-api.onrender.com",
+    "https://sunu-dash.netlify.app"
 ]
 
 ROOT_URLCONF = "sunu_dash.urls"
