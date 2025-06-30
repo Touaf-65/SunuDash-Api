@@ -7,10 +7,6 @@ class File(models.Model):
         ('recap', 'Fichier Récap'),
     ]
 
-    STATUS_CHOICES = [
-        ('active', 'Actif'),
-        ('archived', 'Archivé'),
-    ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     file = models.FileField(upload_to='uploads/')
@@ -18,7 +14,6 @@ class File(models.Model):
     uploaded_at = models.DateTimeField(auto_now_add=True)
     size = models.PositiveIntegerField()
     country = models.ForeignKey(Country, on_delete=models.CASCADE, null=True, blank=True)
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='active')
 
     def save(self, *args, **kwargs):
         if not self.country and self.user and hasattr(self.user, 'country'):
@@ -149,21 +144,12 @@ class Partner(models.Model):
 
 
 class PaymentMethod(models.Model):
-    class TypeEnum(models.TextChoices):
-        CASH = 'C', 'Cash'
-        CARD = 'D', 'Card'
-        BANK_TRANSFER = 'B', 'Bank Transfer'
-
-    class TypePaymentEnum(models.TextChoices):
-        CREDIT = 'C', 'Credit'
-        DEBIT = 'D', 'Debit'
-
+    
     id = models.AutoField(primary_key=True)
     creation_date = models.DateTimeField(auto_now_add=True)
     modification_date = models.DateTimeField(auto_now=True)
-    payment_type = models.CharField(max_length=1, choices=TypeEnum.choices)
-    payment_number = models.IntegerField()
-    payment_method_type = models.CharField(max_length=1, choices=TypePaymentEnum.choices)
+    # payment_type = models.CharField(max_length=1, choices=TypeEnum.choices)
+    payment_number = models.CharField(max_length=255)
     emission_date = models.DateTimeField()
     provider = models.ForeignKey(Partner, on_delete=models.CASCADE, related_name='payment_methods')
 
