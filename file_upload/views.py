@@ -1,4 +1,5 @@
 from django.shortcuts import render
+from django.http import FileResponse
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.generics import ListAPIView
@@ -7,6 +8,10 @@ from rest_framework.permissions import IsAuthenticated
 from users.permissions import IsSuperUser
 from .models import File
 from .serializers import FileSerializer
+from .functions import open_excel_csv, generate_no_conformity_excel
+from .analysis import compare_data
+from .importer import import_data
+import os
 
 class FileListView(APIView):
     # permission_classes = [IsAuthenticated, IsSuperUser]
@@ -46,32 +51,8 @@ class UploadFileView1(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-"""
-
-ecrivons une vue qui doit lire deux fichiers; une fichier statiatique et un fichier recap chacun au format excel et : 
-- verifier les entetes de chacun des fichiers pour s'assurer qu'ils sont corrects: 
-  * les fichiers statistiques on pour entete: Nom Employeur		Broker Name	Nom bénéficiaire	Acte_Contraté_Assuré	Statut Assuré	Numero de police	Nom Assuré Principal	Nom du partenaire	Adresse du Partenaire	Pays du partenaire	Numero de sinistre	Statut	Date de sinistre	Date de règlement	Categorie d'acte	Famille Acte	Nom Acte	 Montant facturé 	    	N°cheque/Autre_Moyent_de_payement	Note Générale	Numero de Facture	Modifié par
-  * les fichiers recap on pour entete: reglementId	date_reglement	beneficiaire	N°_Cheque	autres_Moyen_de_payement	partnerId	Assurés_principal	Employeur	N°_police	totalmttreclame	totalmttrembourse	NumFacture	Note
-- si l'un des fichier n'est pas correct, on renvoie une erreur precise; de mm si ce sont les deux qui ne sont pas correctes
-- stocker le contenu de chacun des deux fichiers dans une variable sous forme de dataframe 
-- renvoyer un message de reussite si tout c'est bien passé
-
-"""
-
-
-import pandas as pd
-from rest_framework.response import Response
-from django.core.files.storage import default_storage
-from .functions import open_excel_csv
-from .analysis import clean_recap_data, clean_statistic_data, compare_data
-
-import tempfile
-
-
 
 class UploadAndValidateFiles(APIView):
-    #permission_classes = [IsAuthenticated]
-
     expected_stat_headers = [
         "Nom Employeur", "Broker Name", "Nom bénéficiaire", "Acte_Contraté_Assuré",
         "Statut Assuré", "Numero de police", "Nom Assuré Principal", "Nom du partenaire",
@@ -88,47 +69,143 @@ class UploadAndValidateFiles(APIView):
     ]
 
     def post(self, request):
-        # Récupérer les fichiers
         file_stat = request.FILES.get('file_stat')
         file_recap = request.FILES.get('file_recap')
 
-        # Vérifier que les fichiers sont fournis
         if not file_stat or not file_recap:
             return Response({"error": "Les deux fichiers doivent être fournis."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # Lire le fichier statistique et vérifier les en-têtes
             df_stat = open_excel_csv(file_stat)
-            stat_headers = df_stat.columns.tolist()
-
-            missing_stat_headers = [header for header in self.expected_stat_headers if header not in stat_headers]
-            if missing_stat_headers:
-                return Response({"errors": f"Les en-têtes manquants dans le fichier statistique : {', '.join(missing_stat_headers)}."},
-                                status=status.HTTP_400_BAD_REQUEST)
-
-            # Lire le fichier récap et vérifier les en-têtes
             df_recap = open_excel_csv(file_recap)
-            recap_headers = df_recap.columns.tolist()
 
-            missing_recap_headers = [header for header in self.expected_recap_headers if header not in recap_headers]
-            if missing_recap_headers:
-                return Response({"errors": f"Les en-têtes manquants dans le fichier récap : {', '.join(missing_recap_headers)}."},
-                                status=status.HTTP_400_BAD_REQUEST)
+            missing_stat = [h for h in self.expected_stat_headers if h not in df_stat.columns]
+            missing_recap = [h for h in self.expected_recap_headers if h not in df_recap.columns]
 
+            if missing_stat or missing_recap:
+                return Response({
+                    "errors": {
+                        "stat_file_missing": missing_stat,
+                        "recap_file_missing": missing_recap
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
 
-            # Intégration de la fonction compare_data
-            comparison_result, common_range = compare_data(df_stat, df_recap)
+            df_conformes, df_non_conformes, common_range = compare_data(df_stat, df_recap)
 
-            if isinstance(comparison_result, pd.DataFrame):
-                # Si il y a des non-conformités, renvoyer le DataFrame
-                return Response({"date_range_start": {common_range[0]}, "date_range_end": {common_range[1]}, "non_conformities": comparison_result.to_dict(orient='records')}) #, status=status.HTTP_400_BAD_REQUEST)
+            if common_range is None:
+                return Response({
+                    "error": "Les fichiers ne couvrent pas de période commune."
+                }, status=status.HTTP_400_BAD_REQUEST)
 
+            if df_conformes.empty and df_non_conformes.empty:
+                return Response({
+                    "warning": "Aucune donnée exploitable dans la période commune. Les deux fichiers sont invalides."
+                }, status=status.HTTP_204_NO_CONTENT)
 
+            if df_conformes.empty:
+                file_path = generate_no_conformity_excel(df_non_conformes, df_stat, df_recap)
+                return FileResponse(open(file_path, 'rb'), as_attachment=True, filename=os.path.basename(file_path))
 
-            return Response({f"message": "Les fichiers compris entre {common_range[0]} et {common_range[1]} ont été validés et enregistrés avec succès."}, status=status.HTTP_201_CREATED)
+            file_instance = File.objects.create(
+                name=file_stat.name,
+                type='stat',
+                uploaded_by=request.user,
+                country=request.user.country,
+                period_start=common_range[0],
+                period_end=common_range[1]
+            )
+
+            # Importer les lignes conformes dans la base de données avec lien au fichier
+            nb_imported = import_data(df_conformes, request.user, file_instance)
+
+            if df_non_conformes.empty:
+                return Response({
+                    "message": "Les deux fichiers sont conformes.",
+                    "imported_count": nb_imported,
+                    "date_range": {
+                        "start": str(common_range[0]),
+                        "end": str(common_range[1])
+                    }
+                }, status=status.HTTP_201_CREATED)
+
+            # Générer le fichier de non-conformité
+            file_path = generate_no_conformity_excel(df_non_conformes, df_stat, df_recap)
+            return FileResponse(open(file_path, 'rb'), as_attachment=True, filename=os.path.basename(file_path))
 
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+# import pandas as pd
+# from rest_framework.response import Response
+# from django.core.files.storage import default_storage
+# from .functions import open_excel_csv
+# from .analysis import clean_recap_data, clean_statistic_data, compare_data
+
+# import tempfile
+
+
+# class UploadAndValidateFiles(APIView):
+#     #permission_classes = [IsAuthenticated]
+
+#     expected_stat_headers = [
+#         "Nom Employeur", "Broker Name", "Nom bénéficiaire", "Acte_Contraté_Assuré",
+#         "Statut Assuré", "Numero de police", "Nom Assuré Principal", "Nom du partenaire",
+#         "Adresse du Partenaire", "Pays du partenaire", "Numero de sinistre", "Statut",
+#         "Date de sinistre", "Date de règlement", "Categorie d'acte", "Famille Acte",
+#         "Nom Acte", "Montant facturé", "N°cheque/Autre_Moyent_de_payement",
+#         "Note Générale", "Numero de Facture", "Modifié par"
+#     ]
+
+#     expected_recap_headers = [
+#         "reglementId", "date_reglement", "beneficiaire", "N°_Cheque",
+#         "autres_Moyen_de_payement", "partnerId", "Assurés_principal", "Employeur",
+#         "N°_police", "totalmttreclame", "totalmttrembourse", "NumFacture", "Note"
+#     ]
+
+#     def post(self, request):
+#         # Récupérer les fichiers
+#         file_stat = request.FILES.get('file_stat')
+#         file_recap = request.FILES.get('file_recap')
+
+#         # Vérifier que les fichiers sont fournis
+#         if not file_stat or not file_recap:
+#             return Response({"error": "Les deux fichiers doivent être fournis."}, status=status.HTTP_400_BAD_REQUEST)
+
+#         try:
+#             # Lire le fichier statistique et vérifier les en-têtes
+#             df_stat = open_excel_csv(file_stat)
+#             stat_headers = df_stat.columns.tolist()
+
+#             missing_stat_headers = [header for header in self.expected_stat_headers if header not in stat_headers]
+#             if missing_stat_headers:
+#                 return Response({"errors": f"Les en-têtes manquants dans le fichier statistique : {', '.join(missing_stat_headers)}."},
+#                                 status=status.HTTP_400_BAD_REQUEST)
+
+#             # Lire le fichier récap et vérifier les en-têtes
+#             df_recap = open_excel_csv(file_recap)
+#             recap_headers = df_recap.columns.tolist()
+
+#             missing_recap_headers = [header for header in self.expected_recap_headers if header not in recap_headers]
+#             if missing_recap_headers:
+#                 return Response({"errors": f"Les en-têtes manquants dans le fichier récap : {', '.join(missing_recap_headers)}."},
+#                                 status=status.HTTP_400_BAD_REQUEST)
+
+
+#             # Intégration de la fonction compare_data
+#             comparison_result, common_range = compare_data(df_stat, df_recap)
+
+#             if isinstance(comparison_result, pd.DataFrame):
+#                 # Si il y a des non-conformités, renvoyer le DataFrame
+#                 return Response({"date_range_start": {common_range[0]}, "date_range_end": {common_range[1]}, "non_conformities": comparison_result.to_dict(orient='records')}) #, status=status.HTTP_400_BAD_REQUEST)
+            
+
+
+#             return Response({f"message": "Les fichiers compris entre {common_range[0]} et {common_range[1]} ont été validés et enregistrés avec succès."}, status=status.HTTP_201_CREATED)
+
+#         except Exception as e:
+#             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 

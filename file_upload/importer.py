@@ -84,32 +84,24 @@ def get_or_create_claim(claim_id, status, date_claim, invoice, act, operator, in
         )
     )[0]
 
-def import_from_df_stat(df, user, file):
+def import_data(df, user, file):
     insured_dict = {}
     for _, row in df.iterrows():
-        # Categorie d'acte
         cat = get_or_create_category(row["Categorie d'acte"], file)
 
-        # Famille acte
         fam = get_or_create_family(row["Famille Acte"], cat, file)
 
-        # Acte
         act = get_or_create_act(row["Nom Acte"], fam, cat, file)
 
-        # Partenaire
         partner = get_or_create_partner(row["Nom du partenaire"], row["Pays du partenaire"], user, file)
 
-        # Client
         client = get_or_create_client(row["Nom Employeur"], user.country, file)
 
-        # Police
         policy = get_or_create_policy(row["Numero de police"], client, file)
 
-        # Assuré
         insured = get_or_create_insured(row["Nom bénéficiaire"], row["Statut Assuré"], row.get("Nom Assuré Principal", ""), insured_dict, file)
         insured_dict[insured.name] = insured
 
-        # Lien InsuredEmployer
         InsuredEmployer.objects.get_or_create(
             insured=insured,
             employer=client,
@@ -121,24 +113,20 @@ def import_from_df_stat(df, user, file):
             )
         )
 
-        # Facture
         invoice = get_or_create_invoice(
             row["Numero de Facture"],
-            float(str(row["Montant facturé"]).replace(',', '').strip()),
+            row["Montant facturé"],
             float(str(row.get("Montant remboursé", 0)).replace(',', '').strip()),
             provider=partner,
             insured=insured,
             file=file
         )
 
-        # Operator
         operator = get_or_create_operator(row["Modifié par"])
 
-        # Méthode de paiement
         if pd.notna(row["N°cheque/Autre_Moyent_de_payement"]) and pd.notna(row["Date de règlement"]):
             get_or_create_payment_method(row["N°cheque/Autre_Moyent_de_payement"], row["Date de règlement"], partner, file)
 
-        # Claim
         get_or_create_claim(
             row["Numero de sinistre"],
             row["Statut"],
