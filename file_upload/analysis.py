@@ -67,6 +67,44 @@ def clean_statistic_data(df):
 
     return df
 
+def preparing_data(df_stat, df_recap):
+    """
+    Cleans and standardizes the statistical and reconciliation data before further processing.
+
+    This function performs specific cleaning operations on the two input DataFrames:
+    - `df_stat`: statistical data from the main file.
+    - `df_recap`: reconciliation data from a secondary file.
+
+    It also renames certain columns to ensure consistency between the datasets,
+    particularly the "Numéro de sinistre" column used as a key for merging or comparison.
+
+    Args:
+    df_stat : pandas.DataFrame
+        DataFrame containing raw statistical data.
+
+    df_recap : pandas.DataFrame
+        DataFrame containing raw reconciliation data.
+
+    Returns:
+    tuple of pandas.DataFrame
+        A tuple `(df_stat, df_recap)` with the cleaned and standardized DataFrames.
+    """
+
+    df_stat = clean_statistic_data(df_stat)
+    df_recap = clean_recap_data(df_recap)
+
+    df_recap = df_recap.rename(columns={
+        "reglementId": "Numéro de sinistre",
+        "totalmttreclame": "Total facturé rapprochement",
+        "totalmttrembourse": "Total remboursé rapprochement"
+    })
+
+    df_stat = df_stat.rename(columns={
+        "Numero de sinistre": "Numéro de sinistre",
+    })
+
+    return df_stat, df_recap
+
 
 def compare_data(df_stat, df_recap):
     """
@@ -84,18 +122,6 @@ def compare_data(df_stat, df_recap):
             - common_range (tuple): Période commune de règlement utilisée pour filtrer
     """
 
-    df_stat = clean_statistic_data(df_stat)
-    df_recap = clean_recap_data(df_recap)
-
-    df_recap = df_recap.rename(columns={
-        "reglementId": "Numéro de sinistre",
-        "totalmttreclame": "Total facturé rapprochement",
-        "totalmttrembourse": "Total remboursé rapprochement"
-    })
-
-    df_stat = df_stat.rename(columns={
-        "Numero de sinistre": "Numéro de sinistre",
-    })
 
     recap_range = get_date_range(df_recap, 'date_reglement')
     stat_range = get_date_range(df_stat, 'Date de règlement')
@@ -108,9 +134,11 @@ def compare_data(df_stat, df_recap):
     filtered_df_stat = df_stat[(df_stat['Date de règlement'] >= common_range[0]) & (df_stat['Date de règlement'] <= common_range[1])]
     filtered_df_recap = df_recap[(df_recap['date_reglement'] >= common_range[0]) & (df_recap['date_reglement'] <= common_range[1])]
 
+
     df_stat_grouped = group_statistic_by_sinistre(filtered_df_stat)
     df_stat_grouped = convert_to_upper(df_stat_grouped, "Numéro de sinistre")
     filtered_df_recap = convert_to_upper(filtered_df_recap, "Numéro de sinistre")
+
 
     df_comparaison = pd.merge(df_stat_grouped, filtered_df_recap, on="Numéro de sinistre", how="inner")
     df_comparaison.drop_duplicates(inplace=True)
@@ -119,8 +147,13 @@ def compare_data(df_stat, df_recap):
     df_comparaison["Écart remboursé"] = df_comparaison["Montant remboursé"] - df_comparaison["Total remboursé rapprochement"]
     df_comparaison["Conformité"] = df_comparaison.apply(check_conformity, axis=1)
 
+
+
     df_non_conformes = df_comparaison[df_comparaison['Conformité'] == 'Non conforme'].copy()
+
     df_conformes = df_comparaison[df_comparaison['Conformité'] == 'Conforme'].copy()
+
+
 
     if not df_non_conformes.empty:
         deleted_conformes = df_non_conformes[
@@ -135,5 +168,11 @@ def compare_data(df_stat, df_recap):
         if not df_non_conformes.empty:
             df_non_conformes['Observation'] = df_non_conformes.apply(generate_observation, axis=1)
 
-    return df_conformes, df_non_conformes, common_range
+    sinistres_conformes = df_conformes["Numéro de sinistre"].unique()
+    filtered_df_stat = convert_to_upper(filtered_df_stat, "Numéro de sinistre")
+    df_conformes_complet = filtered_df_stat[filtered_df_stat["Numéro de sinistre"].isin(sinistres_conformes)].copy()
+
+
+
+    return df_conformes_complet, df_non_conformes, common_range
 

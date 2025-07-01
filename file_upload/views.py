@@ -5,16 +5,17 @@ from rest_framework.views import APIView
 from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from users.permissions import IsSuperUser
+from users.permissions import IsSuperUser, IsGlobalAdmin, IsTerritorialAdmin
 from .models import File
 from .serializers import FileSerializer
 from .functions import open_excel_csv, generate_no_conformity_excel
-from .analysis import compare_data
+from .analysis import compare_data, preparing_data
 from .importer import import_data
+
 import os
 
 class FileListView(APIView):
-    # permission_classes = [IsAuthenticated, IsSuperUser]
+    permission_classes = [IsAuthenticated, IsSuperUser|IsGlobalAdmin|IsTerritorialAdmin]
 
     def get(self, request):
         files = File.objects.all().order_by("-uploaded_at")
@@ -23,7 +24,7 @@ class FileListView(APIView):
 
 
 class StatisticalFileListView(ListAPIView):
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsSuperUser|IsGlobalAdmin|IsTerritorialAdmin]
     
     def get(self, request):
         files = File.objects.filter(file_type='stat').order_by("-uploaded_at")
@@ -32,7 +33,7 @@ class StatisticalFileListView(ListAPIView):
 
 
 class RecapFileListView(ListAPIView):
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsSuperUser|IsGlobalAdmin|IsTerritorialAdmin]
     
     def get(self, request):
         files = File.objects.filter(file_type='recap').order_by("-uploaded_at")
@@ -51,8 +52,12 @@ class UploadFileView1(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+import traceback
+
 
 class UploadAndValidateFiles(APIView):
+    permission_classes = [IsAuthenticated, IsSuperUser|IsGlobalAdmin|IsTerritorialAdmin]
+
     expected_stat_headers = [
         "Nom Employeur", "Broker Name", "Nom bénéficiaire", "Acte_Contraté_Assuré",
         "Statut Assuré", "Numero de police", "Nom Assuré Principal", "Nom du partenaire",
@@ -90,6 +95,8 @@ class UploadAndValidateFiles(APIView):
                     }
                 }, status=status.HTTP_400_BAD_REQUEST)
 
+            df_stat, df_recap = preparing_data(df_stat, df_recap)
+
             df_conformes, df_non_conformes, common_range = compare_data(df_stat, df_recap)
 
             if common_range is None:
@@ -103,25 +110,23 @@ class UploadAndValidateFiles(APIView):
                 }, status=status.HTTP_204_NO_CONTENT)
 
             if df_conformes.empty:
+                print(f"# views: df conforme vide")
                 file_path = generate_no_conformity_excel(df_non_conformes, df_stat, df_recap)
                 return FileResponse(open(file_path, 'rb'), as_attachment=True, filename=os.path.basename(file_path))
 
             file_instance = File.objects.create(
-                name=file_stat.name,
-                type='stat',
-                uploaded_by=request.user,
+                file=file_stat,
+                file_type='stat',
+                user=request.user,
                 country=request.user.country,
-                period_start=common_range[0],
-                period_end=common_range[1]
             )
 
-            # Importer les lignes conformes dans la base de données avec lien au fichier
-            nb_imported = import_data(df_conformes, request.user, file_instance)
+            import_data(df_conformes, request.user, file_instance)
 
             if df_non_conformes.empty:
                 return Response({
                     "message": "Les deux fichiers sont conformes.",
-                    "imported_count": nb_imported,
+                    # "imported_count": nb_imported,
                     "date_range": {
                         "start": str(common_range[0]),
                         "end": str(common_range[1])
@@ -133,6 +138,8 @@ class UploadAndValidateFiles(APIView):
             return FileResponse(open(file_path, 'rb'), as_attachment=True, filename=os.path.basename(file_path))
 
         except Exception as e:
+            print("Traceback de l'erreur :")
+            print(traceback.format_exc())  
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

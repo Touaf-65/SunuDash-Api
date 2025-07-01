@@ -168,6 +168,7 @@ def convert_to_upper(df, column):
         pd.DataFrame: The modified DataFrame.
     """
     if column in df.columns:
+        df = df.copy()
         df[column] = df[column].str.upper()
     else:
         raise KeyError(f"Column '{column}' does not exist in DataFrame.")
@@ -299,6 +300,10 @@ def generate_no_conformity_excel(df, df_stat, df_recap):
 
     # Ensure the downloads directory exists
     os.makedirs('downloads', exist_ok=True)
+
+    #
+    # print(df_stat.columns)
+    #
 
     numeros_sinistre = df['Numéro de sinistre'].unique()
 

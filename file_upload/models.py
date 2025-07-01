@@ -40,7 +40,7 @@ class Client(models.Model):
 
 class Policy(models.Model):
     id = models.AutoField(primary_key=True)
-    creation_date = models.DateTimeField()
+    creation_date = models.DateTimeField(auto_now_add=True)
     policy_number = models.CharField(max_length=255)
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='policies')
     file = models.ForeignKey(File, on_delete=models.SET_NULL, null=True, blank=True, related_name='policies')
@@ -148,7 +148,6 @@ class PaymentMethod(models.Model):
     id = models.AutoField(primary_key=True)
     creation_date = models.DateTimeField(auto_now_add=True)
     modification_date = models.DateTimeField(auto_now=True)
-    # payment_type = models.CharField(max_length=1, choices=TypeEnum.choices)
     payment_number = models.CharField(max_length=255)
     emission_date = models.DateTimeField()
     provider = models.ForeignKey(Partner, on_delete=models.CASCADE, related_name='payment_methods')
@@ -203,7 +202,7 @@ class Claim(models.Model):
         REJECTED = 'R', 'Rejected'
         CANCELED = 'C', 'Canceled'
 
-    id = models.AutoField(primary_key=True)
+    id = models.CharField(primary_key=True, max_length=255)
     status = models.CharField(max_length=1, choices=StatusEnum.choices, null=True)
     claim_date = models.DateTimeField()
     settlement_date = models.DateTimeField()

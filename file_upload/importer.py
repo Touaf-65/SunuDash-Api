@@ -5,20 +5,39 @@ from .models import (
     PaymentMethod, Operator, Claim, Act, ActFamily, ActCategory
 )
 from users.models import Country
-from django.utils.timezone import make_aware
 from datetime import datetime
+from django.utils.timezone import make_aware, is_naive
+
 
 def get_or_create_category(label, file):
-    return ActCategory.objects.get_or_create(label=label.strip(), file=file)[0]
+    if isinstance(label, str):
+        label = label.strip()
+    else:
+        label = " "
+    return ActCategory.objects.get_or_create(label=label.strip())[0]
 
 def get_or_create_family(label, category, file):
-    return ActFamily.objects.get_or_create(label=label.strip(), category=category, file=file)[0]
+    if isinstance(label, str):
+        label = label.strip()
+    else:
+        label = " "
+    return ActFamily.objects.get_or_create(label=label.strip(), category=category)[0]
 
-def get_or_create_act(label, family, category, file):
-    return Act.objects.get_or_create(label=label.strip(), family=family, file=file)[0]
+def get_or_create_act(label, family, category, file=None):
+    if isinstance(label, str):
+        label = label.strip()
+    else:
+        label = " "
+    return Act.objects.get_or_create(label=label, family=family)[0]
+
 
 def get_or_create_partner(name, country_name, user, file):
-    country = Country.objects.filter(name__iexact=country_name.strip()).first() or user.country
+    if isinstance(country_name, str):
+        country_name = country_name.strip()
+    else:
+        country_name = None
+
+    country = Country.objects.filter(name__iexact=country_name).first() or user.country
     return Partner.objects.get_or_create(name=name.strip(), country=country)[0]
 
 def get_or_create_client(name, country, file):
@@ -57,23 +76,62 @@ def get_or_create_invoice(number, claimed, reimbursed, provider, insured, file):
     )[0]
 
 def get_or_create_operator(name):
+    if isinstance(name, str):
+        name = name.strip()
+    else:
+        name = " "
     return Operator.objects.get_or_create(name=name.strip())[0]
 
 def get_or_create_payment_method(number, date, provider, file):
-    date = make_aware(datetime.strptime(date, "%m/%d/%Y"))
+    if isinstance(date, str):
+        try:
+            date = make_aware(datetime.strptime(date, "%m/%d/%Y"))
+        except ValueError:
+            try:
+                date = make_aware(datetime.strptime(date, "%Y-%m-%d"))
+            except ValueError:
+                date = make_aware(pd.to_datetime(date).to_pydatetime())
+
+    elif isinstance(date, (pd.Timestamp, datetime)):
+        date = make_aware(pd.to_datetime(date).to_pydatetime())
+
+    elif isinstance(date, (int, float)):
+        date = make_aware(pd.to_datetime(date, unit='d', origin='1899-12-30').to_pydatetime())
+
+    else:
+        raise ValueError(f"Format de date non reconnu : {type(date)}")
+
     return PaymentMethod.objects.get_or_create(
         payment_number=number.strip(),
         provider=provider,
-        defaults=dict(emission_date=date, file=file)
+        defaults=dict(emission_date=date)
     )[0]
 
-def get_or_create_claim(claim_id, status, date_claim, invoice, act, operator, insured, partner, policy, file):
-    claim_date = make_aware(datetime.strptime(date_claim, "%m/%d/%Y"))
+
+def get_or_create_claim(claim_id, status, date_claim, settlement_date, invoice, act, operator, insured, partner, policy, file):
+    if isinstance(date_claim, str):
+        try:
+            date_claim = make_aware(datetime.strptime(date_claim, "%m/%d/%Y"))
+        except ValueError:
+            try:
+                date_claim = make_aware(datetime.strptime(date_claim, "%Y-%m-%d"))
+            except ValueError:
+                date_claim = make_aware(pd.to_datetime(date_claim).to_pydatetime())
+
+    elif isinstance(date_claim, (pd.Timestamp, datetime)):
+        date_claim = make_aware(pd.to_datetime(date_claim).to_pydatetime())
+
+    elif isinstance(date_claim, (int, float)):
+        date_claim = make_aware(pd.to_datetime(date_claim, unit='d', origin='1899-12-30').to_pydatetime())
+
+    else:
+        raise ValueError(f"Format de date non reconnu : {type(date_claim)}")
     return Claim.objects.update_or_create(
         id=claim_id.strip(),
         defaults=dict(
             status=status[0],
-            claim_date=claim_date,
+            claim_date=date_claim,
+            settlement_date = make_aware(settlement_date) if is_naive(settlement_date) else settlement_date,
             invoice=invoice,
             act=act,
             operator=operator,
@@ -128,9 +186,10 @@ def import_data(df, user, file):
             get_or_create_payment_method(row["N°cheque/Autre_Moyent_de_payement"], row["Date de règlement"], partner, file)
 
         get_or_create_claim(
-            row["Numero de sinistre"],
+            row["Numéro de sinistre"],
             row["Statut"],
             row["Date de sinistre"],
+            row["Date de règlement"],
             invoice,
             act,
             operator,
