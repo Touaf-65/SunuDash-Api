@@ -44,9 +44,9 @@ def clean_statistic_data(df):
         pd.DataFrame: The cleaned statistic DataFrame.
     """
 
-    df.dropna(how='all')
+    df = df.dropna(how='all')
     
-    df.drop_duplicates()
+    df = df.drop_duplicates()
 
 
     columns_to_check = ['Unnamed: 1', 'Broker Name', 'Broker_SunuId', 'Adresse du Partenaire']
@@ -78,20 +78,23 @@ def compare_data(df_stat, df_recap):
         df_recap (pd.DataFrame): The cleaned recap DataFrame.
 
     Returns:
-        pd.DataFrame or bool: A DataFrame of non-conformities if found, True if no non-conformities exist + common date range 
+        tuple: (df_conformes, df_non_conformes, common_range)
+            - df_conformes (pd.DataFrame): DataFrame des lignes conformes à importer
+            - df_non_conformes (pd.DataFrame): DataFrame des lignes non conformes à rapporter
+            - common_range (tuple): Période commune de règlement utilisée pour filtrer
     """
 
     df_stat = clean_statistic_data(df_stat)
     df_recap = clean_recap_data(df_recap)
 
     df_recap = df_recap.rename(columns={
-    "reglementId": "Numéro de sinistre",
-    "totalmttreclame": "Total facturé rapprochement",
-    "totalmttrembourse": "Total remboursé rapprochement"
+        "reglementId": "Numéro de sinistre",
+        "totalmttreclame": "Total facturé rapprochement",
+        "totalmttrembourse": "Total remboursé rapprochement"
     })
 
     df_stat = df_stat.rename(columns={
-    "Numero de sinistre": "Numéro de sinistre",
+        "Numero de sinistre": "Numéro de sinistre",
     })
 
     recap_range = get_date_range(df_recap, 'date_reglement')
@@ -99,40 +102,38 @@ def compare_data(df_stat, df_recap):
 
     common_range = get_common_date_range(stat_range, recap_range)
 
-    print(f"Common range: {common_range}")
+    if common_range is None:
+        return pd.DataFrame(), pd.DataFrame(), None
 
-    filtered_df_stat = df_stat[(df_stat['Date de règlement']>= common_range[0]) & (df_stat['Date de règlement']<= common_range[1])]
-    filtered_df_recap = df_recap[(df_recap['date_reglement']>= common_range[0]) & (df_recap['date_reglement']<= common_range[1])]
+    filtered_df_stat = df_stat[(df_stat['Date de règlement'] >= common_range[0]) & (df_stat['Date de règlement'] <= common_range[1])]
+    filtered_df_recap = df_recap[(df_recap['date_reglement'] >= common_range[0]) & (df_recap['date_reglement'] <= common_range[1])]
 
     df_stat_grouped = group_statistic_by_sinistre(filtered_df_stat)
     df_stat_grouped = convert_to_upper(df_stat_grouped, "Numéro de sinistre")
-    filtered_df_recap = convert_to_upper(df_recap, "Numéro de sinistre")
-
+    filtered_df_recap = convert_to_upper(filtered_df_recap, "Numéro de sinistre")
 
     df_comparaison = pd.merge(df_stat_grouped, filtered_df_recap, on="Numéro de sinistre", how="inner")
-
-
-    df_comparaison.drop_duplicates()
+    df_comparaison.drop_duplicates(inplace=True)
 
     df_comparaison["Écart facturé"] = df_comparaison["Montant facturé"] - df_comparaison["Total facturé rapprochement"]
     df_comparaison["Écart remboursé"] = df_comparaison["Montant remboursé"] - df_comparaison["Total remboursé rapprochement"]
-
-
     df_comparaison["Conformité"] = df_comparaison.apply(check_conformity, axis=1)
 
+    df_non_conformes = df_comparaison[df_comparaison['Conformité'] == 'Non conforme'].copy()
+    df_conformes = df_comparaison[df_comparaison['Conformité'] == 'Conforme'].copy()
 
-    if (df_comparaison['Conformité']=="Non conforme").any():
-        df_no_conformity = df_comparaison.loc[df_comparaison['Conformité'] == 'Non conforme']
-        
-        df_no_conformity = df_no_conformity_by_sinistre(df_no_conformity)
-        
-        df_no_conformity = delete_conform_rows(df_no_conformity)
+    if not df_non_conformes.empty:
+        deleted_conformes = df_non_conformes[
+            (df_non_conformes['Montant facturé'] == df_non_conformes['Total facturé rapprochement']) &
+            (df_non_conformes['Montant remboursé'] == df_non_conformes['Total remboursé rapprochement'])
+        ]
 
-        if not df_no_conformity.empty:
-            df_no_conformity['Observation'] = df_no_conformity.apply(generate_observation, axis=1)
-            
-            # generate_no_conformity_excel(df_no_conformity, df_stat, df_recap)
+        df_non_conformes = delete_conform_rows(df_non_conformes)
 
-            return df_no_conformity, common_range
-        
-    return True, common_range
+        df_conformes = pd.concat([df_conformes, deleted_conformes]).drop_duplicates(subset=["Numéro de sinistre"])
+
+        if not df_non_conformes.empty:
+            df_non_conformes['Observation'] = df_non_conformes.apply(generate_observation, axis=1)
+
+    return df_conformes, df_non_conformes, common_range
+
