@@ -35,7 +35,7 @@ urlpatterns = [
     path('countries/<int:pk>/update/', CountryUpdateView.as_view(), name='country_detail'),
     path('countries/<int:pk>/delete/', CountryDeleteView.as_view(), name='country_detail'),
 
-    path('assign-admin/', AssignTerritorialAdmin.as_view(), name='assign_admin'),  
+    path('territorial_admins/assign/', AssignTerritorialAdmin.as_view(), name='assign_admin'),  
 
     
     path('territorial_admins/create/', CreateTerritorialAdminView.as_view(), name='register_territorial_admin'),
