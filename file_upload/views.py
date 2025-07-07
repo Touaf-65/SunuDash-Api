@@ -1,4 +1,4 @@
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from django.http import FileResponse
 from rest_framework import status
 from rest_framework.views import APIView
@@ -21,6 +21,25 @@ class FileListView(APIView):
         files = File.objects.all().order_by("-uploaded_at")
         serializer = FileSerializer(files, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class FileDeleteView(APIView):
+    permission_classes = [IsAuthenticated, IsSuperUser | IsGlobalAdmin | IsTerritorialAdmin]
+
+    def delete(self, request, file_id):
+        file = get_object_or_404(File, id=file_id)
+
+        # Optionnel : autoriser uniquement l'utilisateur propriétaire ou un admin
+        if request.user != file.user and not (
+            request.user.is_superuser or
+            getattr(request.user, 'is_global_admin', False) or
+            getattr(request.user, 'is_territorial_admin', False)
+        ):
+            return Response({"detail": "You do not have permission to delete this file."}, status=status.HTTP_403_FORBIDDEN)
+
+        file.delete()
+        return Response({"detail": "File deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
+
 
 
 class StatisticalFileListView(ListAPIView):
