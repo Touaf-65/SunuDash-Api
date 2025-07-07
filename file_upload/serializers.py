@@ -8,8 +8,8 @@ from .models import (
 class FileSerializer(serializers.ModelSerializer):
     class Meta:
         model = File
-        fields = ['id', 'user', 'file', 'file_type', 'uploaded_at', 'size', 'country']
-        read_only_fields = ['id', 'user', 'uploaded_at', 'size']
+        fields = ['id', 'user', 'file', 'file_name', 'file_type', 'uploaded_at', 'size', 'country']
+        read_only_fields = ['id', 'user', 'uploaded_at', 'file_name', 'size']
     
 
 class ClientSerializer(serializers.ModelSerializer):

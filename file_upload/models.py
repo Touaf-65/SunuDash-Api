@@ -1,25 +1,37 @@
 from django.db import models
 from users.models import CustomUser as User, Country
 
+import os
+
 class File(models.Model):
     FILE_TYPE_CHOICES = [
         ('stat', 'Fichier Statistique'),
         ('recap', 'Fichier Récap'),
     ]
 
-
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     file = models.FileField(upload_to='uploads/')
+    file_name = models.CharField(max_length=255)
     file_type = models.CharField(max_length=5, choices=FILE_TYPE_CHOICES)
     uploaded_at = models.DateTimeField(auto_now_add=True)
-    size = models.PositiveIntegerField()
+    size = models.CharField(max_length=20, editable=False)
     country = models.ForeignKey(Country, on_delete=models.CASCADE, null=True, blank=True)
 
     def save(self, *args, **kwargs):
+        if not self.file_name:
+            filename = os.path.splitext(self.file.name)[0]
+            self.file_name = filename
         if not self.country and self.user and hasattr(self.user, 'country'):
             self.country = self.user.country
-        self.size = self.file.size
+        self.size = self.format_size(self.file.size)
         super().save(*args, **kwargs)
+
+    def format_size(self, size):
+        for unit in ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z']:
+            if size < 1024:
+                return f"{size:.2f} {unit}o"
+            size /= 1024
+        return f"{size:.2f} Yo"
 
     def __str__(self):
         return self.file.name
