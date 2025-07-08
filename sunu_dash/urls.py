@@ -22,6 +22,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("auth/", include("users.urls")),
     path("files/", include("file_upload.urls")),
+    path("dashboard/", include("dashboard.urls")),
 ]
 
 from django.conf import settings

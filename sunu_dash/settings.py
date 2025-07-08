@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "users",
     "file_upload",
+    "dashboard",
 
 ]
 
