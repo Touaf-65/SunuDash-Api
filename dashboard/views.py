@@ -397,8 +397,8 @@ class ClientStatisticListView(APIView):
         if not (country_id and date_start and date_end):
             return Response({"error": "country_id, date_start et date_end sont requis."}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            date_start = datetime.strptime(date_start, "%Y-%m-%d")
-            date_end = datetime.strptime(date_end, "%Y-%m-%d")
+            date_start = tz.localize(datetime.strptime(date_start, "%Y-%m-%d"))
+            date_end = tz.localize(datetime.strptime(date_end, "%Y-%m-%d"))
         except ValueError:
             return Response({"error": "Format de date invalide. Utilisez YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
         
@@ -436,6 +436,382 @@ class ClientStatisticListView(APIView):
         return Response(results, status=status.HTTP_200_OK)
 
 
-        
 
-    
+class ClientListPolicyStatisticsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, client_id):
+        # client_id = request.data.get('client_id')
+        date_start = request.data.get('date_start')
+        date_end = request.data.get('date_end')
+        if not (date_start and date_end):
+            return Response({"error": "date_start et date_end sont requis."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            date_start = tz.localize(datetime.strptime(date_start, "%Y-%m-%d"))
+            date_end = tz.localize(datetime.strptime(date_end, "%Y-%m-%d"))
+        except ValueError:
+            return Response({"error": "Format de date invalide. Utilisez YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+
+        granularity = get_granularity(date_start, date_end)
+        if granularity == 'day':
+            trunc = TruncDay
+        elif granularity == 'month':
+            trunc = TruncMonth
+        elif granularity == 'quarter':
+            trunc = TruncQuarter
+        else:
+            trunc = TruncYear
+
+        # 1. Part de consommation par type d'assuré (toutes polices du client)
+        insured_ids = list(InsuredEmployer.objects.filter(employer_id=client_id).values_list('insured_id', flat=True))
+        role_map = {'primary': 'Assurés Principaux', 'spouse': 'Assurés Conjoints', 'child': 'Assurés Enfants'}
+        claims_by_role = (
+            Claim.objects.filter(
+                insured_id__in=insured_ids,
+                settlement_date__range=(date_start, date_end),
+                invoice__isnull=False
+            )
+            .values('insured__insured_clients__role')
+            .annotate(total=Sum('invoice__reimbursed_amount'))
+        )
+        total = sum(float(c['total'] or 0) for c in claims_by_role)
+        # On prépare un mapping role -> pourcentage
+        role_percents = {'primary': 0, 'spouse': 0, 'child': 0}
+        for c in claims_by_role:
+            role = c['insured__insured_clients__role']
+            value = float(c['total'] or 0)
+            percent = (value / total * 100) if total else 0
+            if role in role_percents:
+                role_percents[role] = percent
+        role_consumption_share = [
+            role_percents['primary'],
+            role_percents['spouse'],
+            role_percents['child'],
+        ]
+
+        # 2. Evolution consommation par police
+        policies = Policy.objects.filter(client_id=client_id)
+        policy_consumption_series = []
+        policies_table = []
+        for policy in policies:
+            # Série d'évolution
+            claims = (
+                Claim.objects.filter(
+                    policy_id=policy.id,
+                    settlement_date__range=(date_start, date_end),
+                    invoice__isnull=False
+                )
+                .annotate(period=trunc('settlement_date'))
+                .values('period')
+                .annotate(total=Sum('invoice__reimbursed_amount'))
+                .order_by('period')
+            )
+            serie = {
+                "name": policy.policy_number,
+                "data": [
+                    [int(period['period'].timestamp()) * 1000, float(period['total'] or 0)]
+                    for period in claims
+                ]
+            }
+            policy_consumption_series.append(serie)
+
+            # Table des polices
+            insured_links = InsuredEmployer.objects.filter(policy_id=policy.id)
+            nb_primary = insured_links.filter(role='primary').count()
+            nb_total = insured_links.count()
+            insured_ids = insured_links.values_list('insured_id', flat=True)
+            total_consumption = Claim.objects.filter(
+                policy_id=policy.id,
+                insured_id__in=insured_ids,
+                settlement_date__range=(date_start, date_end),
+                invoice__isnull=False
+            ).aggregate(total=Sum('invoice__reimbursed_amount'))['total'] or 0
+            policies_table.append({
+                "policy_number": policy.policy_number,
+                "nb_primary": nb_primary,
+                "nb_total": nb_total,
+                "consumption": float(total_consumption),
+            })
+
+        return Response({
+            "granularity": granularity,
+            "role_consumption_share": role_consumption_share,
+            "policy_consumption_series": policy_consumption_series,
+            "policies_table": policies_table,
+        }, status=status.HTTP_200_OK)
+
+
+
+class ClientPolicyStatisticsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, policy_id):
+        date_start = request.data.get('date_start')
+        date_end = request.data.get('date_end')
+        if not (date_start and date_end):
+            return Response({"error": "date_start et date_end sont requis."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            date_start = tz.localize(datetime.strptime(date_start, "%Y-%m-%d"))
+            date_end = tz.localize(datetime.strptime(date_end, "%Y-%m-%d"))
+        except ValueError:
+            return Response({"error": "Format de date invalide. Utilisez YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+
+        granularity = get_granularity(date_start, date_end)
+        if granularity == 'day':
+            trunc = TruncDay
+        elif granularity == 'month':
+            trunc = TruncMonth
+        elif granularity == 'quarter':
+            trunc = TruncQuarter
+        else:
+            trunc = TruncYear
+
+        # 1. Evolution consommation totale sur la police
+        claims = (
+            Claim.objects.filter(
+                policy_id=policy_id,
+                settlement_date__range=(date_start, date_end),
+                invoice__isnull=False
+            )
+            .annotate(period=trunc('settlement_date'))
+            .values('period')
+            .annotate(total=Sum('invoice__reimbursed_amount'))
+            .order_by('period')
+        )
+        consumption_series = [
+            [int(period['period'].timestamp()) * 1000, float(period['total'] or 0)]
+            for period in claims
+        ]
+
+        # Génère la liste des périodes selon la granularité
+        from datetime import timedelta
+        import pytz
+        periods = []
+        current = date_start
+        while current <= date_end:
+            periods.append(current)
+            if granularity == 'day':
+                current += timedelta(days=1)
+            elif granularity == 'month':
+                year = current.year + (current.month // 12)
+                month = ((current.month % 12) + 1)
+                current = current.replace(year=year, month=month, day=1)
+            elif granularity == 'quarter':
+                month = ((current.month - 1) // 3) * 3 + 1
+                next_quarter = month + 3
+                year = current.year + (next_quarter > 12)
+                month = (next_quarter - 1) % 12 + 1
+                current = current.replace(year=year, month=month, day=1)
+            else:
+                current = current.replace(year=current.year + 1, month=1, day=1)
+
+        nb_primary_series = []
+        nb_beneficiary_series = []
+        from django.db.models import Q
+        for period in periods:
+            # Comptage des assurés principaux présents à la période
+            nb_primary = InsuredEmployer.objects.filter(
+                policy_id=policy_id,
+                role='primary',
+                start_date__lte=period
+            ).filter(Q(end_date__gt=period) | Q(end_date__isnull=True)).count()
+            # Comptage des bénéficiaires (conjoints + enfants)
+            nb_benef = InsuredEmployer.objects.filter(
+                policy_id=policy_id,
+                role__in=['spouse','child'],
+                start_date__lte=period
+            ).filter(Q(end_date__gt=period) | Q(end_date__isnull=True)).count()
+            ts = int(period.timestamp()) * 1000
+            nb_primary_series.append([ts, nb_primary])
+            nb_beneficiary_series.append([ts, nb_benef])
+
+        # insured_percent_series = [percent_principal, percent_beneficiary] sur la consommation
+        claims = (
+            Claim.objects.filter(
+                policy_id=policy_id,
+                settlement_date__range=(date_start, date_end),
+                invoice__isnull=False
+            )
+            .values('insured__insured_clients__role')
+            .annotate(total=Sum('invoice__reimbursed_amount'))
+        )
+        total = sum(float(c['total'] or 0) for c in claims)
+        total_principal = sum(float(c['total'] or 0) for c in claims if c['insured__insured_clients__role'] == 'primary')
+        total_benef = sum(float(c['total'] or 0) for c in claims if c['insured__insured_clients__role'] in ['spouse','child'])
+        percent_principal = (total_principal / total * 100) if total else 0
+        percent_benef = (total_benef / total * 100) if total else 0
+        insured_percent_series = [percent_principal, percent_benef]
+
+        # 5. Evolution du nombre de consommations par type d'assuré
+        role_map = {'primary': 'Assurés Principaux', 'spouse': 'Assurés Conjoints', 'child': 'Assurés Enfants'}
+        claims_by_role = (
+            Claim.objects.filter(
+                policy_id=policy_id,
+                settlement_date__range=(date_start, date_end),
+                invoice__isnull=False
+            )
+            .annotate(period=trunc('settlement_date'))
+            .values('period', 'insured__insured_clients__role')
+            .annotate(nb=Count('id'))
+            .order_by('period', 'insured__insured_clients__role')
+        )
+        # Regrouper par période et par rôle
+        periods = sorted(set([c['period'] for c in claims_by_role]))
+        role_series_map = {'primary': [], 'spouse': [], 'child': []}
+        for period in periods:
+            for role in ['primary','spouse','child']:
+                nb = next((c['nb'] for c in claims_by_role if c['period']==period and c['insured__insured_clients__role']==role), 0)
+                role_series_map[role].append([int(period.timestamp()) * 1000, nb])
+        consumption_by_role_series = [
+            {"name": role_map[role], "data": role_series_map[role]} for role in ['primary','spouse','child']
+        ]
+
+        # --- Séries avancées ---
+        from django.db.models import F
+
+        principals = InsuredEmployer.objects.filter(policy_id=policy_id, role='primary')
+        family_consumptions = []
+        for principal in principals:
+            # IDs de la famille = principal + bénéficiaires liés
+            family_ids = [principal.insured_id] + list(
+                InsuredEmployer.objects.filter(
+                    policy_id=policy_id,
+                    primary_insured_ref=principal.insured_id
+                ).values_list('insured_id', flat=True)
+            )
+            total = Claim.objects.filter(
+                policy_id=policy_id,
+                insured_id__in=family_ids,
+                settlement_date__range=(date_start, date_end),
+                invoice__isnull=False
+            ).aggregate(total=Sum('invoice__reimbursed_amount'))['total'] or 0
+            family_consumptions.append({
+                'principal': principal.insured.name,
+                'family_ids': family_ids,
+                'total': float(total)
+            })
+        # Top 5 familles
+        top_families = sorted(family_consumptions, key=lambda x: x['total'], reverse=True)[:5]
+        # Séries temporelles
+        family_consumption_series = []
+        for fam in top_families:
+            claims = (
+                Claim.objects.filter(
+                    policy_id=policy_id,
+                    insured_id__in=fam['family_ids'],
+                    settlement_date__range=(date_start, date_end),
+                    invoice__isnull=False
+                )
+                .annotate(period=trunc('settlement_date'))
+                .values('period')
+                .annotate(total=Sum('invoice__reimbursed_amount'))
+                .order_by('period')
+            )
+            serie = {
+                "name": fam['principal'],
+                "data": [
+                    [int(period['period'].timestamp()) * 1000, float(period['total'] or 0)]
+                    for period in claims
+                ]
+            }
+            family_consumption_series.append(serie)
+        # 2. Top 5 partenaires
+        partners = (
+            Claim.objects.filter(
+                policy_id=policy_id,
+                settlement_date__range=(date_start, date_end),
+                invoice__isnull=False,
+                partner__isnull=False
+            )
+            .values('partner', 'partner__name')
+            .annotate(total=Sum('invoice__reimbursed_amount'))
+            .order_by('-total')[:5]
+        )
+        partner_tuples = [(p['partner'], p['partner__name']) for p in partners]
+        partner_consumption_series = []
+        for partner_id, pname in partner_tuples:
+            claims = (
+                Claim.objects.filter(
+                    policy_id=policy_id,
+                    settlement_date__range=(date_start, date_end),
+                    invoice__isnull=False,
+                    partner__name=pname
+                )
+                .annotate(period=trunc('settlement_date'))
+                .values('period')
+                .annotate(total=Sum('invoice__reimbursed_amount'))
+                .order_by('period')
+            )
+            serie = {
+                "name": pname,
+                "data": [
+                    [int(period['period'].timestamp()) * 1000, float(period['total'] or 0)]
+                    for period in claims
+                ]
+            }
+            partner_consumption_series.append(serie)
+        # 3. Top 5 actes
+        acts = (
+            Claim.objects.filter(
+                policy_id=policy_id,
+                settlement_date__range=(date_start, date_end),
+                invoice__isnull=False,
+                act__isnull=False
+            )
+            .values('act__label')
+            .annotate(total=Sum('invoice__reimbursed_amount'))
+            .order_by('-total')[:5]
+        )
+        act_names = [a['act__label'] for a in acts]
+        act_consumption_series = []
+        for aname in act_names:
+            claims = (
+                Claim.objects.filter(
+                    policy_id=policy_id,
+                    settlement_date__range=(date_start, date_end),
+                    invoice__isnull=False,
+                    act__label=aname
+                )
+                .annotate(period=trunc('settlement_date'))
+                .values('period')
+                .annotate(total=Sum('invoice__reimbursed_amount'))
+                .order_by('period')
+            )
+            serie = {
+                "name": aname,
+                "data": [
+                    [int(period['period'].timestamp()) * 1000, float(period['total'] or 0)]
+                    for period in claims
+                ]
+            }
+            act_consumption_series.append(serie)
+        # 4. Tableau top partenaires
+        top_partners_table = []
+        for partner_id, pname in partner_tuples:
+            agg = Claim.objects.filter(
+                policy_id=policy_id,
+                settlement_date__range=(date_start, date_end),
+                invoice__isnull=False,
+                partner__name=pname
+            ).aggregate(
+                total_claimed=Sum('invoice__claimed_amount'),
+                total_reimbursed=Sum('invoice__reimbursed_amount')
+            )
+            top_partners_table.append({
+                "partner_id": partner_id,
+                "partner": pname,
+                "total_claimed": float(agg['total_claimed'] or 0),
+                "total_reimbursed": float(agg['total_reimbursed'] or 0)
+            })
+        return Response({
+            "granularity": granularity,
+            "consumption_series": consumption_series,
+            "nb_primary_series": nb_primary_series,
+            "nb_beneficiary_series": nb_beneficiary_series,
+            "insured_percent_series": insured_percent_series,
+            "consumption_by_role_series": consumption_by_role_series,
+            "family_consumption_series": family_consumption_series,
+            "partner_consumption_series": partner_consumption_series,
+            "act_consumption_series": act_consumption_series,
+            "top_partners_table": top_partners_table,
+        }, status=status.HTTP_200_OK)
