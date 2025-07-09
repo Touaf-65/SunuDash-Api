@@ -1,5 +1,5 @@
 from django.db import models
-from django.contrib.auth.models import AbstractUser, BaseUserManager, User, Permission, Group
+from django.contrib.auth.models import AbstractUser, BaseUserManager, Permission
 from django.utils import timezone
 import random
 import uuid
@@ -49,13 +49,13 @@ class Country(models.Model):
 
 
 class CustomUser(AbstractUser, PermissionsMixin):
-    group = models.ForeignKey(
-        Group,
-        related_name='customuser_set',
-        on_delete=models.SET_NULL,
-        null=True,  # Permettre aux utilisateurs de ne pas avoir de groupe
-        blank=True  # Permettre aux utilisateurs de ne pas avoir de groupe
-    )
+    class Roles(models.TextChoices):
+        SUPERUSER = 'SUPERUSER', 'Superuser'
+        ADMIN_GLOBAL = 'ADMIN_GLOBAL', 'Admin Global'
+        ADMIN_TERRITORIAL = 'ADMIN_TERRITORIAL', 'Admin Territorial'
+        CHEF_DEPT_TECH = 'CHEF_DEPT_TECH', 'Chef Département Technique'
+        RESPONSABLE_OPERATEUR = 'RESP_OPERATEUR', 'Responsable Opérateur de Saisie'
+
     user_permissions = models.ManyToManyField(
         Permission,
         related_name='customuser_set_permissions',
@@ -63,19 +63,30 @@ class CustomUser(AbstractUser, PermissionsMixin):
     )
     email = models.EmailField(unique=True)
     country = models.ForeignKey(Country, on_delete=models.SET_NULL, null=True, blank=True)
+    role = models.CharField(
+        max_length=32,
+        choices=Roles.choices,
+        default=Roles.RESPONSABLE_OPERATEUR,
+    )
     objects = CustomUserManager()
 
     USERNAME_FIELD = 'username'
     REQUIRED_FIELDS = ['first_name', 'last_name', 'email']
 
-    def is_global_admin(self):
-        return self.is_staff and not self.country
+    def is_superuser_role(self):
+        return self.role == self.Roles.SUPERUSER
 
-    def is_territorial_admin(self):
-        return self.is_staff and self.country
-    
-    def is_superuserr(self):
-        return self.is_staff and self.is_superuser
+    def is_admin_global(self):
+        return self.role == self.Roles.ADMIN_GLOBAL
+
+    def is_admin_territorial(self):
+        return self.role == self.Roles.ADMIN_TERRITORIAL
+
+    def is_chef_dept_tech(self):
+        return self.role == self.Roles.CHEF_DEPT_TECH
+
+    def is_responsable_operateur(self):
+        return self.role == self.Roles.RESPONSABLE_OPERATEUR
 
 
 class PasswordResetToken(models.Model):
