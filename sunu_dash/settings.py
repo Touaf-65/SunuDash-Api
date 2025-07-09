@@ -32,6 +32,12 @@ ALLOWED_HOSTS = ['sunudash-api.onrender.com', '127.0.0.1']
 
 # Application definition
 
+AUTHENTICATION_BACKENDS = [
+    'users.backends.UsernameOrEmailBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
+
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
