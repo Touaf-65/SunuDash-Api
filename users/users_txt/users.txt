@@ -21,3 +21,4 @@ Username: t.lil419, Password: ghluSeQr
 Username: t.lil370, Password: 7va1ZUP3
 Username: t.lil47, Password: JVr8bgPm
 Username: t.lil967, Password: BngTw6zo
+Username: superuser.john, Password: bLr80dKRHLB1

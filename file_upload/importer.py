@@ -37,7 +37,16 @@ def get_or_create_partner(name, country_name, user, file):
     else:
         country_name = None
 
-    country = Country.objects.filter(name__iexact=country_name).first() or user.country
+    country = Country.objects.filter(name__iexact=country_name).first()
+    if not country:
+        country = getattr(user, 'country', None)
+
+    if not country:
+        raise ValueError(
+            f"Impossible de déterminer le pays pour le partenaire '{name}'. "
+            f"Ni '{country_name}' ni le pays de l'utilisateur ({getattr(user, 'username', user)}) n'existent."
+        )
+
     return Partner.objects.get_or_create(name=name.strip(), country=country)[0]
 
 def get_or_create_client(name, country, file):
@@ -64,8 +73,20 @@ def get_or_create_insured(name, statut, principal_name, insured_dict, file):
     return insured
 
 def get_or_create_invoice(number, claimed, reimbursed, provider, insured, file):
+    cleaned_number = ""
+    if number is None:
+        cleaned_number = ""
+    elif isinstance(number, float):
+        if str(number).lower() == 'nan':
+            cleaned_number = ""
+        else:
+            cleaned_number = str(int(number)) if number.is_integer() else str(number)
+    else:
+        cleaned_number = str(number)
+    cleaned_number = cleaned_number.strip()
+
     return Invoice.objects.get_or_create(
-        invoice_number=number.strip(),
+        invoice_number=cleaned_number,
         provider=provider,
         insured=insured,
         defaults=dict(
@@ -74,6 +95,7 @@ def get_or_create_invoice(number, claimed, reimbursed, provider, insured, file):
             file=file
         )
     )[0]
+
 
 def get_or_create_operator(name):
     if isinstance(name, str):

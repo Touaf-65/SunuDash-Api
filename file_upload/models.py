@@ -1,3 +1,9 @@
+"""
+je dois faire des statiatiques budgetaires par rapport au depenses des clients pour un pays. 
+en fait, pour un pays, on prend chacun de ses clients et on determine le total de ses sinistres sur une periode donnee(entre deux dates)
+utilisant les montants factures et remboursements de ces sinistres.
+"""
+
 from django.db import models
 from users.models import CustomUser as User, Country
 
@@ -36,10 +42,7 @@ class File(models.Model):
     def __str__(self):
         return self.file.name
 
-"""
-Je dis modifier la classe client pour qu'on y ajoute un champ prime pour stocker des valeurs monetaires qu'on pourra historiser.
-Puisque ce champ sera modifiable, on peut le faire par la suite. on aimerait pouvoir recuperer dans un intervalle donne la valeur qu'avait le champ prime et faire des statiatiques avec vu que nous sommes dans un contexte de dashboard de consommation 
-"""
+
 class Client(models.Model):
     id = models.AutoField(primary_key=True)
     contact = models.CharField(max_length=255, null=True, blank=True)

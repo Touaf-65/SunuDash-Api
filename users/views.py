@@ -10,11 +10,73 @@ from django.conf import settings
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 from .permissions import IsSuperUser, IsGlobalAdmin, IsTerritorialAdmin
-from django.contrib.auth.models import Group, User
+from django.contrib.auth.models import User
 import random
 import string
 import os
 import pandas as pd
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from django.contrib.auth import get_user_model
+
+class SuperuserCreateAPIView(APIView):
+    """
+    API temporaire pour créer le superuser via une requête POST.
+    Désactivée automatiquement dès qu'un superuser existe.
+    """
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+
+        if CustomUser.objects.filter(is_superuser=True).exists():
+            return Response({'detail': 'Superuser already exists.'}, status=status.HTTP_403_FORBIDDEN)
+        required_fields = ['first_name', 'last_name', 'email']
+        for field in required_fields:
+            if not request.data.get(field):
+                return Response({'detail': f'{field} is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        first_name = request.data.get('first_name')
+        last_name = request.data.get('last_name')
+        email = request.data.get('email')
+        from_email = settings.EMAIL_HOST_USER
+
+
+        password = ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(12))
+
+        try:
+            user = CustomUser.objects.create_superuser(
+                first_name=first_name,
+                last_name=last_name,
+                email=email,
+                password=password,
+                is_staff=True,
+                is_superuser=True,
+            )
+            user.role = CustomUser.Roles.SUPERUSER
+            user.save()
+        except Exception as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        file_path = os.path.join(settings.BASE_DIR, 'users/users_txt', 'users.txt')
+
+        with open(file_path, 'a') as file:
+            file.write(f'Username: {user.username}, Password: {password}\n')
+
+        try:
+            send_mail(
+                'Votre compte superuser a été créé',
+                f'Votre username est {user.username} et votre mot de passe est {password}',
+                from_email,
+                [email],
+                fail_silently=False
+            )
+        except Exception as e:
+            return Response({'detail': f'User created but failed to send email: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response({'detail': 'Superuser created successfully. Identifiants envoyés par email.'}, status=status.HTTP_201_CREATED)
 
 
 class register_user(APIView):
@@ -69,15 +131,15 @@ class register_user(APIView):
 
 class login_user(APIView):
     def post(self, request):
-        username = request.data.get('username')
+        login = request.data.get('login')  # Peut être username OU email
         password = request.data.get('password')
         
-        if not (username and password):
-            return Response({'error': 'Username and Password are required'}, status=status.HTTP_400_BAD_REQUEST)
+        if not (login and password):
+            return Response({'error': 'Login (username ou email) et Password sont requis'}, status=status.HTTP_400_BAD_REQUEST)
         
-        user = authenticate(username=username, password=password)
+        user = authenticate(username=login, password=password)
         
-        print(f"Loged User: {user}")
+        print(f"Logged User: {user}")
 
         if user is not None:
             refresh = RefreshToken.for_user(user)
@@ -86,7 +148,7 @@ class login_user(APIView):
                 'refresh_token': str(refresh)
             }, status=status.HTTP_200_OK)
         else:
-            return Response({"error": "Invalid username or password."}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({"error": "Identifiants invalides."}, status=status.HTTP_401_UNAUTHORIZED)
 
 
 
@@ -112,27 +174,21 @@ class CreateGlobalAdminView(APIView):
                 password=password,
                 is_staff=True
             )
-
-            group, created = Group.objects.get_or_create(name="Administrateur Global")
-            user.group = group
+            user.role = CustomUser.Roles.ADMIN_GLOBAL
             user.save()
-
             print(f"Password: {password}")
             print(f"Created User : {user}")
-                
-                
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-            
-        file_path = os.path.join(settings.BASE_DIR, 'users/users_txt', 'global_users.txt')
 
-            # Écrire dans le fichier texte
+        file_path = os.path.join(settings.BASE_DIR, 'users/users_txt', 'global_users.txt')
+        # Écrire dans le fichier texte
         with open(file_path, 'a') as file:
             file.write(f'Username: {user.username}, Password: {password}\n')
-            
+
         try:
             send_mail(
-                'Your new account',  
+                'Your new account',
                 f'Your username is {user.username} and your password is {password}',
                 from_email,
                 [email],
@@ -187,8 +243,7 @@ class CreateGlobalAdminsFromExcel(APIView):
                     is_staff=True
                 )
 
-                group, created = Group.objects.get_or_create(name="Administrateur Global")
-                user.groups.add(group)
+                user.role = CustomUser.Roles.ADMIN_GLOBAL
                 user.save()
 
                 file_path = os.path.join(settings.BASE_DIR, 'users/users_txt', 'global_users.txt')
@@ -219,16 +274,17 @@ class GlobalAdminListView(APIView):
     permission_classes = [IsAuthenticated, IsSuperUser]
 
     def get(self, request):
-        users = CustomUser.objects.filter(group__name="Administrateur Global")
+        users = CustomUser.objects.filter(role=CustomUser.Roles.ADMIN_GLOBAL)
         serializer = UserSerializer(users, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 class GlobalAdminDetailView(APIView):
     permission_classes = [IsAuthenticated, IsSuperUser]
 
     def get(self, request, pk):
         try:
-            user = CustomUser.objects.get(pk=pk, group__name="Administrateur Global")
+            user = CustomUser.objects.get(pk=pk, role=CustomUser.Roles.ADMIN_GLOBAL)
         except CustomUser.DoesNotExist:
             return Response({'error': 'Administrateur global non trouvé'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -240,7 +296,7 @@ class GlobalAdminUpdateView(APIView):
 
     def put(self, request, pk):
         try:
-            user = CustomUser.objects.get(pk=pk, group__name="Administrateur Global")
+            user = CustomUser.objects.get(pk=pk, role=CustomUser.Roles.ADMIN_GLOBAL)
         except CustomUser.DoesNotExist:
             return Response({'error': 'Administrateur global non trouvé'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -255,7 +311,7 @@ class GlobalAdminDeleteView(APIView):
 
     def delete(self, request, pk):
         try:
-            user = CustomUser.objects.get(pk=pk, group__name="Administrateur Global")
+            user = CustomUser.objects.get(pk=pk, role=CustomUser.Roles.ADMIN_GLOBAL)
         except CustomUser.DoesNotExist:
             return Response({'error': 'Administrateur global non trouvé'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -268,6 +324,7 @@ class CreateCountryView(APIView):
     Vue pour que l'admin global puisse créer des pays.
     """
     permission_classes = [IsAuthenticated, IsSuperUser|IsGlobalAdmin]
+
     def post(self, request):
         name = request.data.get('name')
         code = request.data.get('code')
@@ -323,6 +380,7 @@ class ListCountriesView(APIView):
     Vue pour lister les pays créés par l'admin global.
     """
     permission_classes = [IsAuthenticated, IsSuperUser|IsGlobalAdmin]
+
     def get(self, request):
         countries = Country.objects.all()
         serializer = CountrySerializer(countries, many=True)
@@ -371,8 +429,9 @@ class CountryDeleteView(APIView):
 
 class CreateTerritorialAdminView(APIView):
     permission_classes = [IsAuthenticated, IsSuperUser|IsGlobalAdmin]
+
     def post(self, request):
-        if request.user.is_superuser or request.user.group.name == "Administrateur Global":
+        if request.user.is_superuser or request.user.is_admin_global():
             first_name = request.data.get('first_name')
             last_name = request.data.get('last_name')
             email = request.data.get('email')
@@ -392,27 +451,21 @@ class CreateTerritorialAdminView(APIView):
                     password=password,
                     is_staff=True
                 )
-
-                group, created = Group.objects.get_or_create(name="Administrateur Territorial")
-                user.group = group
+                user.role = CustomUser.Roles.ADMIN_TERRITORIAL
                 user.save()
-
                 print(f"Password: {password}")
                 print(f"Created User : {user}")
-                
-                
             except Exception as e:
                 return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-            
-            file_path = os.path.join(settings.BASE_DIR, 'users/users_txt', 'territorial_users.txt')
 
+            file_path = os.path.join(settings.BASE_DIR, 'users/users_txt', 'territorial_users.txt')
             # Écrire dans le fichier texte
             with open(file_path, 'a') as file:
                 file.write(f'Username: {user.username}, Password: {password}\n')
-            
+
             try:
                 send_mail(
-                    'Your new account',  
+                    'Your new account',
                     f'Your username is {user.username} and your password is {password}',
                     from_email,
                     [email],
@@ -468,8 +521,7 @@ class CreateTerritorialAdminsFromExcel(APIView):
                     is_staff=True
                 )
 
-                group, created = Group.objects.get_or_create(name="Administrateur Territorial")
-                user.group = group
+                user.role = CustomUser.Roles.ADMIN_TERRITORIAL
                 user.save()
 
                 created_users.append(user)
@@ -500,7 +552,7 @@ class TerritorialAdminListView(APIView):
     permission_classes = [IsAuthenticated, IsSuperUser | IsGlobalAdmin]
 
     def get(self, request):
-        territorial_admins = CustomUser.objects.filter(group__name="Administrateur Territorial")
+        territorial_admins = CustomUser.objects.filter(role=CustomUser.Roles.ADMIN_TERRITORIAL)
         serializer = UserSerializer(territorial_admins, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -510,7 +562,7 @@ class TerritorialAdminDetailView(APIView):
 
     def get(self, request, pk):
         try:
-            territorial_admin = CustomUser.objects.get(pk=pk, group__name="Administrateur Territorial")
+            territorial_admin = CustomUser.objects.get(pk=pk, role=CustomUser.Roles.ADMIN_TERRITORIAL)
         except CustomUser.DoesNotExist:
             return Response({"error": "Territorial admin not found."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -523,7 +575,7 @@ class TerritorialAdminUpdateView(APIView):
 
     def put(self, request, pk):
         try:
-            territorial_admin = CustomUser.objects.get(pk=pk, group__name="Administrateur Territorial")
+            territorial_admin = CustomUser.objects.get(pk=pk, role=CustomUser.Roles.ADMIN_TERRITORIAL)
         except CustomUser.DoesNotExist:
             return Response({"error": "Territorial admin not found."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -540,7 +592,7 @@ class TerritorialAdminDeleteView(APIView):
 
     def delete(self, request, pk):
         try:
-            territorial_admin = CustomUser.objects.get(pk=pk, group__name="Administrateur Territorial")
+            territorial_admin = CustomUser.objects.get(pk=pk, role=CustomUser.Roles.ADMIN_TERRITORIAL)
         except CustomUser.DoesNotExist:
             return Response({"error": "Territorial admin not found."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -555,7 +607,7 @@ class AssignTerritorialAdmin(APIView):
     """
     permission_classes = [IsAuthenticated, IsSuperUser|IsGlobalAdmin]
     def post(self, request):
-        if request.user.is_superuser or request.user.group.name == "Administrateur Global":
+        if request.user.is_superuser or request.user.is_admin_global():
             admin_email = request.data.get('email')
             country_id = request.data.get('country_id')
 
@@ -699,7 +751,7 @@ class SimpleUserListView(APIView):
 
     def get(self, request):
         users = CustomUser.objects.exclude(
-            group__name__in=["Administrateur Global", "Administrateur Territorial"]).exclude(is_superuser=True)
+            role__in=[CustomUser.Roles.ADMIN_GLOBAL, CustomUser.Roles.ADMIN_TERRITORIAL]).exclude(is_superuser=True)
         serializer = UserSerializer(users, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -714,7 +766,7 @@ class SimpleUserDetailView(APIView):
             if user.is_superuser:
                 return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-            if user.group and user.group.name in ["Administrateur Principal", "Administrateur Secondaire"]:
+            if user.role in [CustomUser.Roles.ADMIN_GLOBAL, CustomUser.Roles.ADMIN_TERRITORIAL]:
                 return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
             serializer = UserSerializer(user)
@@ -733,7 +785,7 @@ class SimpleUserUpdateView(APIView):
             if user.is_superuser:
                 return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-            if user.group and user.group.name in ["Administrateur Principal", "Administrateur Secondaire"]:
+            if user.role in [CustomUser.Roles.ADMIN_GLOBAL, CustomUser.Roles.ADMIN_TERRITORIAL]:
                 return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
         except CustomUser.DoesNotExist:
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
@@ -756,7 +808,7 @@ class SimpleUserDeleteView(APIView):
             if user.is_superuser:
                 return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
-            if user.group and user.group.name in ["Administrateur Principal", "Administrateur Secondaire"]:
+            if user.role in [CustomUser.Roles.ADMIN_GLOBAL, CustomUser.Roles.ADMIN_TERRITORIAL]:
                 return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
         except CustomUser.DoesNotExist:
             return Response({"error": "Territorial admin not found."}, status=status.HTTP_404_NOT_FOUND)

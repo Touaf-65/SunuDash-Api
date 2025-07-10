@@ -4,7 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from users.models import Country
-from users.permissions import IsSuperUser, IsGlobalAdmin, IsTerritorialAdmin
+from users.permissions import IsSuperUser, IsGlobalAdmin, IsTerritorialAdmin, IsChefDeptTech, IsResponsableOperateur
 from file_upload.models import Client, Claim, Invoice, InsuredEmployer
 from datetime import datetime
 
@@ -382,7 +382,7 @@ class ClientStatisticListView(APIView):
 
         user = request.user
 
-        if user.is_superuser or getattr(user, 'is_global_admin', False):
+        if user.is_superuser or getattr(user, 'is_admin_global', False):
             country_id = request.data.get('country_id')
             if not country_id:
                 return Response({"error": "country_id est requis pour les superusers et global admins."}, status=status.HTTP_400_BAD_REQUEST)

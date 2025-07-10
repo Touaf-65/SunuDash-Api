@@ -1,18 +1,9 @@
-# from django.urls import path
-# from .views import login_user, register_user
-
-# urlpatterns = [
-#     path('login/', login_user.as_view(), name='login'),
-#     path('register/', register_user.as_view(), name='register'),
-# ]
-
-# ---- ENd first version
-
-
 from django.urls import path
-from .views import register_user, login_user, CreateCountryView, CreateCountryFromExcel, AssignTerritorialAdmin, ListCountriesView, CreateUserByTerritorialAdmin, PasswordResetRequestView, PasswordResetConfirmView, CreateTerritorialAdminView, CreateTerritorialAdminsFromExcel, CreateGlobalAdminView, GlobalAdminListView, GlobalAdminDetailView, GlobalAdminUpdateView, GlobalAdminDeleteView, CreateGlobalAdminsFromExcel, CountryDetailView, CountryUpdateView, CountryDeleteView, TerritorialAdminListView, TerritorialAdminDetailView, TerritorialAdminUpdateView, TerritorialAdminDeleteView, SimpleUserListView, SimpleUserDetailView, SimpleUserUpdateView, SimpleUserDeleteView
+from .views import register_user, login_user, CreateCountryView, CreateCountryFromExcel, AssignTerritorialAdmin, ListCountriesView, CreateUserByTerritorialAdmin, PasswordResetRequestView, PasswordResetConfirmView, CreateTerritorialAdminView, CreateTerritorialAdminsFromExcel, CreateGlobalAdminView, GlobalAdminListView, GlobalAdminDetailView, GlobalAdminUpdateView, GlobalAdminDeleteView, CreateGlobalAdminsFromExcel, CountryDetailView, CountryUpdateView, CountryDeleteView, TerritorialAdminListView, TerritorialAdminDetailView, TerritorialAdminUpdateView, TerritorialAdminDeleteView, SimpleUserListView, SimpleUserDetailView, SimpleUserUpdateView, SimpleUserDeleteView, SuperuserCreateAPIView
 
 urlpatterns = [
+    path('create_superuser/', SuperuserCreateAPIView.as_view(), name='create_superuser'),
+
     path('register/', register_user.as_view(), name='register_user'),
     path('login/', login_user.as_view(), name='login_user'),
 
