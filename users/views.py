@@ -154,7 +154,6 @@ class login_user(APIView):
 
 
 class GetConnectedUserByLogin(APIView):
-    permission_classes = [IsAuthenticated]
 
     def get(self, request, login):
         try:
