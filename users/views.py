@@ -8,9 +8,10 @@ from .serializers import UserSerializer, CountrySerializer, PasswordResetConfirm
 from django.core.mail import send_mail
 from django.conf import settings
 from django.contrib.auth import authenticate
+from django.db.models import Q
+from django.contrib.auth.models import User
 from rest_framework_simplejwt.tokens import RefreshToken
 from .permissions import IsSuperUser, IsGlobalAdmin, IsTerritorialAdmin
-from django.contrib.auth.models import User
 import random
 import string
 import os
@@ -131,7 +132,7 @@ class register_user(APIView):
 
 class login_user(APIView):
     def post(self, request):
-        login = request.data.get('login')  # Peut être username OU email
+        login = request.data.get('login')
         password = request.data.get('password')
         
         if not (login and password):
@@ -149,6 +150,30 @@ class login_user(APIView):
             }, status=status.HTTP_200_OK)
         else:
             return Response({"error": "Identifiants invalides."}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+
+class GetConnectedUserByLogin(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, login):
+        try:
+            user = CustomUser.objects.filter(Q(username=login) | Q(email=login)).select_related('country').first()
+            if not user:
+                return Response({'error': 'Utilisateur non trouvé.'}, status=status.HTTP_404_NOT_FOUND)
+            data = {
+                'id': user.id,
+                'role': user.role,
+                'country': {'id': user.country.id, 'name': user.country.name} if user.country else None,
+                'email': user.email,
+                'username': user.username,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+            }
+            return Response(data, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 
 
@@ -676,7 +701,6 @@ class CreateUserByTerritorialAdmin(APIView):
 
    
 
-
 class CreateUsersByTerritorialAdminFromExcel(APIView):
     """
     Vue pour permettre aux admins territoriaux de créer des utilisateurs dans leur propre pays.
@@ -745,7 +769,6 @@ class CreateUsersByTerritorialAdminFromExcel(APIView):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     
 
-
 class SimpleUserListView(APIView):
     permission_classes = [IsAuthenticated, IsSuperUser | IsGlobalAdmin]
 
@@ -754,6 +777,7 @@ class SimpleUserListView(APIView):
             role__in=[CustomUser.Roles.ADMIN_GLOBAL, CustomUser.Roles.ADMIN_TERRITORIAL]).exclude(is_superuser=True)
         serializer = UserSerializer(users, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 class SimpleUserDetailView(APIView):
     permission_classes = [IsAuthenticated, IsSuperUser | IsGlobalAdmin]
@@ -795,7 +819,6 @@ class SimpleUserUpdateView(APIView):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
 
 class SimpleUserDeleteView(APIView):
@@ -871,4 +894,6 @@ class PasswordResetConfirmView(APIView):
             )
             return Response({"message": "Password has been reset successfully."}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
     

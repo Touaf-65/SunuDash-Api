@@ -1,11 +1,13 @@
 from django.urls import path
-from .views import register_user, login_user, CreateCountryView, CreateCountryFromExcel, AssignTerritorialAdmin, ListCountriesView, CreateUserByTerritorialAdmin, PasswordResetRequestView, PasswordResetConfirmView, CreateTerritorialAdminView, CreateTerritorialAdminsFromExcel, CreateGlobalAdminView, GlobalAdminListView, GlobalAdminDetailView, GlobalAdminUpdateView, GlobalAdminDeleteView, CreateGlobalAdminsFromExcel, CountryDetailView, CountryUpdateView, CountryDeleteView, TerritorialAdminListView, TerritorialAdminDetailView, TerritorialAdminUpdateView, TerritorialAdminDeleteView, SimpleUserListView, SimpleUserDetailView, SimpleUserUpdateView, SimpleUserDeleteView, SuperuserCreateAPIView
+from .views import register_user, login_user, CreateCountryView, CreateCountryFromExcel, AssignTerritorialAdmin, ListCountriesView, CreateUserByTerritorialAdmin, PasswordResetRequestView, PasswordResetConfirmView, CreateTerritorialAdminView, CreateTerritorialAdminsFromExcel, CreateGlobalAdminView, GlobalAdminListView, GlobalAdminDetailView, GlobalAdminUpdateView, GlobalAdminDeleteView, CreateGlobalAdminsFromExcel, CountryDetailView, CountryUpdateView, CountryDeleteView, TerritorialAdminListView, TerritorialAdminDetailView, TerritorialAdminUpdateView, TerritorialAdminDeleteView, SimpleUserListView, SimpleUserDetailView, SimpleUserUpdateView, SimpleUserDeleteView, SuperuserCreateAPIView, GetConnectedUserByLogin
 
 urlpatterns = [
     path('create_superuser/', SuperuserCreateAPIView.as_view(), name='create_superuser'),
 
     path('register/', register_user.as_view(), name='register_user'),
     path('login/', login_user.as_view(), name='login_user'),
+    path('getConnectedUser/<str:login>/', GetConnectedUserByLogin.as_view(), name='get_connected_user_by_login'),
+
 
     path('password_reset/', PasswordResetRequestView.as_view(), name='password_reset_request'),
     path('password_reset_confirm/', PasswordResetConfirmView.as_view(), name='password_reset_confirm'),
