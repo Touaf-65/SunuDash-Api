@@ -825,3 +825,58 @@ class ClientPolicyStatisticsView(APIView):
             "act_consumption_series": act_consumption_series,
             "top_partners_table": top_partners_table,
         }, status=status.HTTP_200_OK)
+
+
+
+class CountriesCommomStatisticsView(APIView):
+    pass
+
+
+class CountriesListStatisticsView(APIView):
+    """
+    Vue pour récupérer les statistiques pays :
+    - nom
+    - prime globale
+    - consommation globale
+    - ratio S/P
+    - nombre d'assurés
+    - nombre de clients
+    """
+    # permission_classes = [IsAuthenticated, IsSuperUser | IsGlobalAdmin]
+
+    def get(self, request):
+        from file_upload.models import Client, InsuredEmployer, Claim, Invoice
+        from users.models import Country
+        from django.db.models import Sum, Count, Q
+
+        countries = Country.objects.all()
+        results = []
+        for country in countries:
+            clients = Client.objects.filter(country=country)
+            nb_clients = clients.count()
+            prime_globale = clients.aggregate(total=Sum('prime'))['total'] or 0
+
+            # Récupérer tous les ids de clients du pays
+            client_ids = clients.values_list('id', flat=True)
+
+            # Nombre d'assurés du pays (distincts)
+            nb_assures = InsuredEmployer.objects.filter(employer_id__in=client_ids).values('insured_id').distinct().count()
+
+            # Consommation globale : somme des montants remboursés des claims dont la policy appartient à un client du pays
+            # Claims -> Policy -> Client (policy.client_id in client_ids)
+            claim_ids = Claim.objects.filter(policy__client_id__in=client_ids).values_list('invoice_id', flat=True)
+            consommation_globale = Invoice.objects.filter(id__in=claim_ids).aggregate(total=Sum('reimbursed_amount'))['total'] or 0
+
+            # Ratio S/P
+            ratio_sp = float(prime_globale) / float(consommation_globale) if consommation_globale else None
+
+            results.append({
+                'country_id': country.id,
+                'country_name': country.name,
+                'prime_globale': float(prime_globale),
+                'consommation_globale': float(consommation_globale),
+                'ratio_sp': float(ratio_sp) if ratio_sp is not None else None,
+                'nb_assures': nb_assures,
+                'nb_clients': nb_clients,
+            })
+        return Response(results, status=status.HTTP_200_OK)
