@@ -91,8 +91,10 @@ class ClientStatisticListView(APIView):
                 "nb_policies": nb_policies,
                 "nb_primary_insured": nb_primary,
                 "nb_total_insured": nb_total,
-                "total_consumption": total_consumption,
-                "total_reimbursement": total_reimbursement,
+                "total_consumption": str(total_consumption),
+               "total_reimbursement": str(total_reimbursement),
+                "type total consumption": type(str(total_consumption)).__name__,
+                "type total reimbursement": type(str(total_reimbursement)).__name__,
             })
         return Response(results, status=status.HTTP_200_OK)
 
