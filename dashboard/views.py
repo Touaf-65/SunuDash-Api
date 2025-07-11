@@ -62,24 +62,27 @@ class ClientStatisticListView(APIView):
         
         clients = Client.objects.filter(country_id=country_id)
         results = []
+
         for client in clients:
-
+            print(f"Client: {client.name} ({client.id})")
             nb_policies = Policy.objects.filter(client=client).count()
-
             insured_links = InsuredEmployer.objects.filter(employer=client)
-
+            print(f"  insured_links: {insured_links.count()}")
             nb_primary = insured_links.filter(role='primary').count()
-
             nb_total = insured_links.count()
-
-            insured_ids = insured_links.values_list('insured_id', flat=True)
+            insured_ids = list(insured_links.values_list('insured_id', flat=True))
+            print(f"  insured_ids: {insured_ids}")
             claims = Claim.objects.filter(
                 insured_id__in=insured_ids,
                 claim_date__range=(date_start, date_end)
             )
-            invoice_ids = claims.values_list('invoice_id', flat=True)
+            print(f"  claims: {claims.count()}")
+            invoice_ids = list(claims.values_list('invoice_id', flat=True))
+            print(f"  invoice_ids: {invoice_ids}")
             total_consumption = Invoice.objects.filter(id__in=invoice_ids).aggregate(total=Sum('claimed_amount'))['total'] or 0
             total_reimbursement = Invoice.objects.filter(id__in=invoice_ids).aggregate(total=Sum('reimbursed_amount'))['total'] or 0
+            print(f"  total_consumption: {total_consumption}, total_reimbursement: {total_reimbursement}")
+            # ... reste du code ...
 
             results.append({
                 "client_id": client.id,
@@ -88,8 +91,8 @@ class ClientStatisticListView(APIView):
                 "nb_policies": nb_policies,
                 "nb_primary_insured": nb_primary,
                 "nb_total_insured": nb_total,
-                "total_consumption": float(total_consumption),
-                "total_reimbursement": float(total_reimbursement),
+                "total_consumption": total_consumption,
+                "total_reimbursement": total_reimbursement,
             })
         return Response(results, status=status.HTTP_200_OK)
 
