@@ -1038,14 +1038,51 @@ class CountryStatisticsDetailView(APIView):
         def serie_to_pairs(serie):
             return [[to_timestamp_ms(point['period']), float(point['value'] or 0)] for point in serie]
 
-        # Séries simples
-        clients_series_pairs = serie_to_pairs(clients_series)
-        primes_series_pairs = serie_to_pairs(primes_series)
-        rembourse_series_pairs = serie_to_pairs(rembourse_series)
+        # --- Helper pour générer toutes les périodes de la granularité ---
+        def generate_periods(date_start, date_end, granularity):
+            from dateutil.relativedelta import relativedelta
+            periods = []
+            current = date_start
+            while current <= date_end:
+                periods.append(current)
+                if granularity == 'day':
+                    current += timedelta(days=1)
+                elif granularity == 'month':
+                    current += relativedelta(months=1)
+                elif granularity == 'year':
+                    current += relativedelta(years=1)
+            return periods
+
+        # --- Helper pour remplir la série sur toutes les périodes ---
+        def fill_full_series(periods, serie):
+            value_map = {str(point['period']): point['value'] for point in serie}
+            last_value = None
+            result = []
+            for period in periods:
+                key = str(period)
+                if key in value_map:
+                    last_value = value_map[key]
+                result.append({'period': period, 'value': last_value})
+            return result
+
+        # Appliquer la logique de granularité à plusieurs séries
+        periods = generate_periods(date_start, date_end, granularity)
+
+        clients_series_full = fill_full_series(periods, clients_series)
+        primes_series_full = fill_full_series(periods, primes_series)
+        rembourse_series_full = fill_full_series(periods, rembourse_series)
+        nb_principal_series_full = fill_full_series(periods, nb_principal_series)
+        nb_total_series_full = fill_full_series(periods, nb_total_series)
+
+        clients_series_pairs = serie_to_pairs(clients_series_full)
+        primes_series_pairs = serie_to_pairs(primes_series_full)
+        rembourse_series_pairs = serie_to_pairs(rembourse_series_full)
+        nb_principal_series_pairs = serie_to_pairs(nb_principal_series_full)
+        nb_total_series_pairs = serie_to_pairs(nb_total_series_full)
+
+        # Les autres séries restent inchangées
         partenaires_series_pairs = serie_to_pairs(partenaires_series)
         ratio_sp_series_pairs = serie_to_pairs(ratio_sp_series)
-        nb_principal_series_pairs = serie_to_pairs(nb_principal_series)
-        nb_total_series_pairs = serie_to_pairs(nb_total_series)
 
         # Séries par type d'assuré
         nb_by_role_pairs = {}
