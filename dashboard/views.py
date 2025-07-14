@@ -1394,14 +1394,19 @@ class CountryStatisticsDetailView(APIView):
                     data.append({'x': x, 'y': y})
                 nb_by_role_series.append({'name': label, 'data': data})
 
-            # Top 5 clients consommation
-            top_clients_series_pairs = []
+            # Top 5 clients consommation (format multi-series pour ApexCharts)
+            periods = generate_periods(date_start, date_end, granularity)
+            def to_date(obj):
+                if hasattr(obj, 'date'):
+                    return obj.date()
+                return obj
+            period_dates = [to_date(p) for p in periods]
+            top_clients_series_multi = []
             for top in top_clients_series:
-                top_clients_series_pairs.append({
-                    "client_id": top["client_id"],
-                    "client_name": top["client_name"],
-                    "series": serie_to_pairs(top["series"])
-                })
+                name = top.get("client_name") or str(top.get("client_id"))
+                value_map = {to_date(point['period']): float(point['value'] or 0) for point in top["series"]}
+                data = [value_map.get(p, 0) for p in period_dates]
+                top_clients_series_multi.append({"name": name, "data": data})
 
             return Response({
                 "granularity": granularity,
@@ -1413,7 +1418,7 @@ class CountryStatisticsDetailView(APIView):
                 "nb_assures_principaux_series": nb_principal_series_pairs,
                 "nb_assures_total_series": nb_total_series_pairs,
                 "nb_assures_par_type_series": nb_by_role_series,
-                "top5_clients_conso_series": top_clients_series_pairs
+                "top5_clients_conso_series": top_clients_series_multi
             }, status=status.HTTP_200_OK)
 
         except Exception as e:
