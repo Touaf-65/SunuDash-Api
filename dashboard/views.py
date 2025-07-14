@@ -1055,13 +1055,18 @@ class CountryStatisticsDetailView(APIView):
 
         # --- Helper pour remplir la série sur toutes les périodes ---
         def fill_full_series(periods, serie):
-            value_map = {str(point['period']): point['value'] for point in serie}
+            # On convertit toutes les périodes en datetime.date pour la clé
+            def to_date(obj):
+                if hasattr(obj, 'date'):
+                    return obj.date()
+                return obj
+            value_map = {to_date(point['period']): point['value'] for point in serie}
             last_value = None
             result = []
             for period in periods:
-                key = str(period)
-                if key in value_map:
-                    last_value = value_map[key]
+                period_date = to_date(period)
+                if period_date in value_map:
+                    last_value = value_map[period_date]
                 result.append({'period': period, 'value': last_value})
             return result
 
