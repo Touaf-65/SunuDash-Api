@@ -1340,10 +1340,59 @@ class CountryStatisticsDetailView(APIView):
             partenaires_series_pairs = serie_to_pairs(partenaires_series)
             ratio_sp_series_pairs = serie_to_pairs(ratio_sp_series)
 
-            # Séries par type d'assuré
-            nb_by_role_pairs = {}
+            # Séries par type d'assuré : format spécial pour ApexCharts multi-lignes
+            role_labels = {
+                'primary': 'Assurés Principaux',
+                'spouse': 'Assurés conjoints',
+                'child': 'Assurés enfants',
+                'other': 'Autres assurés',
+            }
+            def date_label(dt, granularity):
+                if granularity == 'day':
+                    if hasattr(dt, 'strftime'):
+                        return dt.strftime('%a')  # 'Mon', 'Tue', ...
+                    return str(dt)
+                elif granularity == 'month':
+                    if hasattr(dt, 'strftime'):
+                        return dt.strftime('%Y-%m')
+                    return str(dt)
+                elif granularity == 'year':
+                    if hasattr(dt, 'strftime'):
+                        return dt.strftime('%Y')
+                    return str(dt)
+                elif granularity == 'quarter':
+                    if hasattr(dt, 'year') and hasattr(dt, 'month'):
+                        quarter = (dt.month - 1) // 3 + 1
+                        return f"{dt.year}-Q{quarter}"
+                    return str(dt)
+                return str(dt)
+            nb_by_role_series = []
             for role, serie in nb_by_role.items():
-                nb_by_role_pairs[role] = serie_to_pairs(serie)
+                label = role_labels.get(role, role)
+                # Génère la liste des périodes de la granularité
+                periods = generate_periods(date_start, date_end, granularity)
+                # On convertit tout en datetime.date pour la clé
+                def to_date(obj):
+                    if hasattr(obj, 'date'):
+                        return obj.date()
+                    return obj
+                period_dates = set([to_date(p) for p in periods])
+                # Index des valeurs de la série d'origine
+                value_map = {to_date(point['period']): float(point['value'] or 0) for point in serie}
+                # Points hors-grille
+                extra_dates = set(value_map.keys()) - period_dates
+                # Fusionne et trie toutes les dates
+                all_dates = sorted(period_dates | extra_dates)
+                data = []
+                for d in all_dates:
+                    if d in period_dates:
+                        x = date_label(d, granularity)
+                    else:
+                        # Label spécial pour hors-grille
+                        x = f"EXTRA {d}"
+                    y = value_map.get(d, 0)
+                    data.append({'x': x, 'y': y})
+                nb_by_role_series.append({'name': label, 'data': data})
 
             # Top 5 clients consommation
             top_clients_series_pairs = []
@@ -1363,7 +1412,7 @@ class CountryStatisticsDetailView(APIView):
                 "ratio_sp_series": ratio_sp_series_pairs,
                 "nb_assures_principaux_series": nb_principal_series_pairs,
                 "nb_assures_total_series": nb_total_series_pairs,
-                "nb_assures_par_type_series": nb_by_role_pairs,
+                "nb_assures_par_type_series": nb_by_role_series,
                 "top5_clients_conso_series": top_clients_series_pairs
             }, status=status.HTTP_200_OK)
 
@@ -1371,3 +1420,29 @@ class CountryStatisticsDetailView(APIView):
             print("ERREUR API CountryStatisticsDetailView:", str(e))
             traceback.print_exc()
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+"""
+def date_label(dt, granularity):
+    if granularity == 'day':
+        # dt peut être datetime ou date
+        if hasattr(dt, 'strftime'):
+            return dt.strftime('%a')  # 'Mon', 'Tue', ...
+        return str(dt)
+    elif granularity == 'month':
+        if hasattr(dt, 'strftime'):
+            return dt.strftime('%Y-%m')
+        return str(dt)
+    elif granularity == 'year':
+        if hasattr(dt, 'strftime'):
+            return dt.strftime('%Y')
+        return str(dt)
+    elif granularity == 'quarter':
+        # Pas standard, on encode '2023-Q1' etc.
+        if hasattr(dt, 'year') and hasattr(dt, 'month'):
+            quarter = (dt.month - 1) // 3 + 1
+            return f"{dt.year}-Q{quarter}"
+        return str(dt)
+    return str(dt)
+"""
