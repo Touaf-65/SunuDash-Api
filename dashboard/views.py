@@ -882,6 +882,252 @@ class CountriesListStatisticsView(APIView):
 
 
 
+# class CountryStatisticsDetailView(APIView):
+#     """
+#     Vue pour récupérer les séries temporelles statistiques d'un pays donné sur une période.
+#     """
+#     permission_classes = [IsAuthenticated, IsSuperUser | IsGlobalAdmin | IsTerritorialAdmin]
+
+#     def post(self, request, country_id):
+#         import traceback
+#         try:
+#             date_start = request.data.get('date_start')
+#             date_end = request.data.get('date_end')
+#             if not (date_start and date_end):
+#                 return Response({"error": "date_start et date_end sont requis."}, status=status.HTTP_400_BAD_REQUEST)
+#             try:
+#                 date_start = tz.localize(datetime.strptime(date_start, "%Y-%m-%d"))
+#                 date_end = tz.localize(datetime.strptime(date_end, "%Y-%m-%d"))
+#             except ValueError:
+#                 return Response({"error": "Format de date invalide. Utilisez YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+
+#             # Choix de la granularité
+#             granularity = get_granularity(date_start, date_end)
+#             if granularity == 'day':
+#                 trunc = TruncDay
+#             elif granularity == 'month':
+#                 trunc = TruncMonth
+#             elif granularity == 'quarter':
+#                 trunc = TruncQuarter
+#             else:
+#                 trunc = TruncYear
+
+#             # Préparation des filtres
+#             clients = Client.objects.filter(country_id=country_id)
+#             client_ids = clients.values_list('id', flat=True)
+#             policies = Policy.objects.filter(client_id__in=client_ids)
+#             policy_ids = policies.values_list('id', flat=True)
+
+#             # 1. Evolution du nombre de clients
+#             clients_series = (
+#                 clients.filter(creation_date__range=(date_start, date_end))
+#                 .annotate(period=trunc('creation_date'))
+#                 .values('period')
+#                 .annotate(value=Count('id'))
+#                 .order_by('period')
+#             )
+#             clients_series = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": c['value']} for c in clients_series]
+
+
+#             # 2. Evolution de la prime globale
+#             primes_series = (
+#                 clients.filter(creation_date__range=(date_start, date_end))
+#                 .annotate(period=trunc('creation_date'))
+#                 .values('period')
+#                 .annotate(value=Sum('prime'))
+#                 .order_by('period')
+#             )
+#             primes_series = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": float(c['value'] or 0)} for c in primes_series]
+
+#             # 3. Evolution du montant remboursé total
+#             claims = Claim.objects.filter(policy_id__in=policy_ids, settlement_date__range=(date_start, date_end), invoice__isnull=False)
+#             rembourse_series = (
+#                 claims.annotate(period=trunc('settlement_date'))
+#                 .values('period')
+#                 .annotate(value=Sum('invoice__reimbursed_amount'))
+#                 .order_by('period')
+#             )
+#             rembourse_series = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": float(c['value'] or 0)} for c in rembourse_series]
+
+#             # 4. Evolution du nombre de partenaires (distincts dans les claims)
+#             partenaires_series = (
+#                 claims.annotate(period=trunc('settlement_date'))
+#                 .values('period')
+#                 .annotate(value=Count('invoice__provider', distinct=True))
+#                 .order_by('period')
+#             )
+#             partenaires_series = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": c['value']} for c in partenaires_series]
+
+#             # 5. Evolution du ratio S/P (consommation / prime)
+#             # On doit croiser les deux séries précédentes
+#             ratio_sp_series = []
+#             primes_by_period = {c['period']: float(c['value'] or 0) for c in primes_series}
+#             rembourse_by_period = {c['period']: float(c['value'] or 0) for c in rembourse_series}
+#             all_periods = sorted(set(primes_by_period.keys()) | set(rembourse_by_period.keys()))
+#             for period in all_periods:
+#                 prime = primes_by_period.get(period, 0)
+#                 remboursement = rembourse_by_period.get(period, 0)
+#                 ratio = remboursement / prime if prime else None
+#                 ratio_sp_series.append({"period": period, "value": ratio})
+
+#             # 6. Evolution du nombre d’assurés principaux
+#             nb_principal_series = (
+#                 InsuredEmployer.objects.filter(employer_id__in=client_ids, role='primary', insured__creation_date__range=(date_start, date_end))
+#                 .annotate(period=trunc('insured__creation_date'))
+#                 .values('period')
+#                 .annotate(value=Count('insured_id', distinct=True))
+#                 .order_by('period')
+#             )
+#             nb_principal_series = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": c['value']} for c in nb_principal_series]
+
+#             # 7. Evolution du nombre d’assurés total
+#             nb_total_series = (
+#                 InsuredEmployer.objects.filter(employer_id__in=client_ids, insured__creation_date__range=(date_start, date_end))
+#                 .annotate(period=trunc('insured__creation_date'))
+#                 .values('period')
+#                 .annotate(value=Count('insured_id', distinct=True))
+#                 .order_by('period')
+#             )
+#             nb_total_series = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": c['value']} for c in nb_total_series]
+
+#             # 8. Evolution du nombre de chaque type d’assurés
+#             nb_by_role = {}
+#             for role in ['primary', 'spouse', 'child', 'other']:
+#                 role_series = (
+#                     InsuredEmployer.objects.filter(employer_id__in=client_ids, role=role, insured__creation_date__range=(date_start, date_end))
+#                     .annotate(period=trunc('insured__creation_date'))
+#                     .values('period')
+#                     .annotate(value=Count('insured_id', distinct=True))
+#                     .order_by('period')
+#                 )
+#                 nb_by_role[role] = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": c['value']} for c in role_series]
+
+#             # 9. Evolution du top 5 clients ayant le plus consommé
+#             top_clients = (
+#                 claims.values('policy__client_id')
+#                 .annotate(total_conso=Sum('invoice__reimbursed_amount'))
+#                 .order_by('-total_conso')[:5]
+#             )
+#             top_client_ids = [c['policy__client_id'] for c in top_clients]
+#             top_clients_map = {c['policy__client_id']: float(c['total_conso'] or 0) for c in top_clients}
+#             client_names = {c.id: c.name for c in Client.objects.filter(id__in=top_client_ids)}
+#             top_clients_series = []
+#             for client_id in top_client_ids:
+#                 client_claims = claims.filter(policy__client_id=client_id)
+#                 client_series = (
+#                     client_claims.annotate(period=trunc('settlement_date'))
+#                     .values('period')
+#                     .annotate(value=Sum('invoice__reimbursed_amount'))
+#                     .order_by('period')
+#                 )
+#                 client_series = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": float(c['value'] or 0)} for c in client_series]
+#                 top_clients_series.append({
+#                     "client_id": client_id,
+#                     "client_name": client_names.get(client_id, str(client_id)),
+#                     "series": client_series
+#                 })
+
+#             # Helper pour convertir une date en timestamp ms
+#             def to_timestamp_ms(dt):
+#                 import datetime
+#                 if hasattr(dt, 'timestamp'):
+#                     return int(dt.timestamp() * 1000)
+#                 elif isinstance(dt, datetime.date):
+#                     return int(datetime.datetime(dt.year, dt.month, dt.day).timestamp() * 1000)
+#                 else:
+#                     return int(dt)
+
+#             def serie_to_pairs(serie):
+#                 return [[to_timestamp_ms(point['period']), float(point['value'] or 0)] for point in serie]
+
+#             # --- Helper pour générer toutes les périodes de la granularité ---
+#             def generate_periods(date_start, date_end, granularity):
+#                 from dateutil.relativedelta import relativedelta
+#                 periods = []
+#                 current = date_start
+#                 while current <= date_end:
+#                     periods.append(current)
+#                     if granularity == 'day':
+#                         current += timedelta(days=1)
+#                     elif granularity == 'month':
+#                         current += relativedelta(months=1)
+#                     elif granularity == 'year':
+#                         current += relativedelta(years=1)
+#                 return periods
+
+#             # --- Helper pour remplir la série sur toutes les périodes ---
+#             def fill_full_series(periods, serie):
+#                 # On convertit toutes les périodes en datetime.date pour la clé
+#                 def to_date(obj):
+#                     if hasattr(obj, 'date'):
+#                         return obj.date()
+#                     return obj
+#                 value_map = {to_date(point['period']): point['value'] for point in serie}
+#                 last_value = None
+#                 result = []
+#                 for period in periods:
+#                     period_date = to_date(period)
+#                     if period_date in value_map:
+#                         last_value = value_map[period_date]
+#                     result.append({'period': period, 'value': last_value})
+#                 return result
+
+#             # Appliquer la logique de granularité à plusieurs séries
+#             periods = generate_periods(date_start, date_end, granularity)
+
+#             clients_series_full = fill_full_series(periods, clients_series)
+#             primes_series_full = fill_full_series(periods, primes_series)
+#             rembourse_series_full = fill_full_series(periods, rembourse_series)
+#             nb_principal_series_full = fill_full_series(periods, nb_principal_series)
+#             nb_total_series_full = fill_full_series(periods, nb_total_series)
+
+#             clients_series_pairs = serie_to_pairs(clients_series_full)
+#             primes_series_pairs = serie_to_pairs(primes_series_full)
+#             rembourse_series_pairs = serie_to_pairs(rembourse_series_full)
+#             nb_principal_series_pairs = serie_to_pairs(nb_principal_series_full)
+#             nb_total_series_pairs = serie_to_pairs(nb_total_series_full)
+
+#             # Les autres séries restent inchangées
+#             partenaires_series_pairs = serie_to_pairs(partenaires_series)
+#             ratio_sp_series_pairs = serie_to_pairs(ratio_sp_series)
+
+#             # Séries par type d'assuré
+#             nb_by_role_pairs = {}
+#             for role, serie in nb_by_role.items():
+#                 nb_by_role_pairs[role] = serie_to_pairs(serie)
+
+#             # Top 5 clients consommation
+#             top_clients_series_pairs = []
+#             for top in top_clients_series:
+#                 top_clients_series_pairs.append({
+#                     "client_id": top["client_id"],
+#                     "client_name": top["client_name"],
+#                     "series": serie_to_pairs(top["series"])
+#                 })
+
+#         except Exception as e:
+#             print("ERREUR API CountryStatisticsDetailView:", e)
+#             traceback.print_exc()
+#             return Response({"error": str(e)}, status=500)
+
+#         return Response({
+#             "granularity": granularity,
+#             "clients_series": clients_series_pairs,
+#             "prime_globale_series": primes_series_pairs,
+#             "montant_rembourse_series": rembourse_series_pairs,
+#             "partenaires_series": partenaires_series_pairs,
+#             "ratio_sp_series": ratio_sp_series_pairs,
+#             "nb_assures_principaux_series": nb_principal_series_pairs,
+#             "nb_assures_total_series": nb_total_series_pairs,
+#             "nb_assures_par_type_series": nb_by_role_pairs,
+#             "top5_clients_conso_series": top_clients_series_pairs
+#         }, status=status.HTTP_200_OK)
+
+
+from datetime import datetime, timedelta, date
+from dateutil.relativedelta import relativedelta
+import traceback
+
 class CountryStatisticsDetailView(APIView):
     """
     Vue pour récupérer les séries temporelles statistiques d'un pays donné sur une période.
@@ -889,229 +1135,239 @@ class CountryStatisticsDetailView(APIView):
     permission_classes = [IsAuthenticated, IsSuperUser | IsGlobalAdmin | IsTerritorialAdmin]
 
     def post(self, request, country_id):
-
-        date_start = request.data.get('date_start')
-        date_end = request.data.get('date_end')
-        if not (date_start and date_end):
-            return Response({"error": "date_start et date_end sont requis."}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            date_start = tz.localize(datetime.strptime(date_start, "%Y-%m-%d"))
-            date_end = tz.localize(datetime.strptime(date_end, "%Y-%m-%d"))
-        except ValueError:
-            return Response({"error": "Format de date invalide. Utilisez YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+            date_start = request.data.get('date_start')
+            date_end = request.data.get('date_end')
+            if not (date_start and date_end):
+                return Response({"error": "date_start et date_end sont requis."}, status=status.HTTP_400_BAD_REQUEST)
+            
+            try:
+                date_start = tz.localize(datetime.strptime(date_start, "%Y-%m-%d"))
+                date_end = tz.localize(datetime.strptime(date_end, "%Y-%m-%d"))
+            except ValueError:
+                return Response({"error": "Format de date invalide. Utilisez YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Choix de la granularité
-        granularity = get_granularity(date_start, date_end)
-        if granularity == 'day':
-            trunc = TruncDay
-        elif granularity == 'month':
-            trunc = TruncMonth
-        elif granularity == 'quarter':
-            trunc = TruncQuarter
-        else:
-            trunc = TruncYear
+            # Choix de la granularité
+            granularity = get_granularity(date_start, date_end)
+            if granularity == 'day':
+                trunc = TruncDay
+            elif granularity == 'month':
+                trunc = TruncMonth
+            elif granularity == 'quarter':
+                trunc = TruncQuarter
+            else:
+                trunc = TruncYear
 
-        # Préparation des filtres
-        clients = Client.objects.filter(country_id=country_id)
-        client_ids = clients.values_list('id', flat=True)
-        policies = Policy.objects.filter(client_id__in=client_ids)
-        policy_ids = policies.values_list('id', flat=True)
+            # Préparation des filtres
+            clients = Client.objects.filter(country_id=country_id)
+            client_ids = clients.values_list('id', flat=True)
+            policies = Policy.objects.filter(client_id__in=client_ids)
+            policy_ids = policies.values_list('id', flat=True)
 
-        # 1. Evolution du nombre de clients
-        clients_series = (
-            clients.filter(creation_date__range=(date_start, date_end))
-            .annotate(period=trunc('creation_date'))
-            .values('period')
-            .annotate(value=Count('id'))
-            .order_by('period')
-        )
-        clients_series = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": c['value']} for c in clients_series]
+            # 1. Evolution du nombre de clients
+            clients_series = (
+                clients.filter(creation_date__range=(date_start, date_end))
+                .annotate(period=trunc('creation_date'))
+                .values('period')
+                .annotate(value=Count('id'))
+                .order_by('period')
+            )
+            clients_series = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": c['value']} for c in clients_series]
 
-        # 2. Evolution de la prime globale
-        primes_series = (
-            clients.filter(creation_date__range=(date_start, date_end))
-            .annotate(period=trunc('creation_date'))
-            .values('period')
-            .annotate(value=Sum('prime'))
-            .order_by('period')
-        )
-        primes_series = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": float(c['value'] or 0)} for c in primes_series]
+            # 2. Evolution de la prime globale
+            primes_series = (
+                clients.filter(creation_date__range=(date_start, date_end))
+                .annotate(period=trunc('creation_date'))
+                .values('period')
+                .annotate(value=Sum('prime'))
+                .order_by('period')
+            )
+            primes_series = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": float(c['value'] or 0)} for c in primes_series]
 
-        # 3. Evolution du montant remboursé total
-        claims = Claim.objects.filter(policy_id__in=policy_ids, settlement_date__range=(date_start, date_end), invoice__isnull=False)
-        rembourse_series = (
-            claims.annotate(period=trunc('settlement_date'))
-            .values('period')
-            .annotate(value=Sum('invoice__reimbursed_amount'))
-            .order_by('period')
-        )
-        rembourse_series = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": float(c['value'] or 0)} for c in rembourse_series]
+            # 3. Evolution du montant remboursé total
+            claims = Claim.objects.filter(policy_id__in=policy_ids, settlement_date__range=(date_start, date_end), invoice__isnull=False)
+            rembourse_series = (
+                claims.annotate(period=trunc('settlement_date'))
+                .values('period')
+                .annotate(value=Sum('invoice__reimbursed_amount'))
+                .order_by('period')
+            )
+            rembourse_series = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": float(c['value'] or 0)} for c in rembourse_series]
 
-        # 4. Evolution du nombre de partenaires (distincts dans les claims)
-        partenaires_series = (
-            claims.annotate(period=trunc('settlement_date'))
-            .values('period')
-            .annotate(value=Count('invoice__provider', distinct=True))
-            .order_by('period')
-        )
-        partenaires_series = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": c['value']} for c in partenaires_series]
+            # 4. Evolution du nombre de partenaires (distincts dans les claims)
+            partenaires_series = (
+                claims.annotate(period=trunc('settlement_date'))
+                .values('period')
+                .annotate(value=Count('invoice__provider', distinct=True))
+                .order_by('period')
+            )
+            partenaires_series = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": c['value']} for c in partenaires_series]
 
-        # 5. Evolution du ratio S/P (consommation / prime)
-        # On doit croiser les deux séries précédentes
-        ratio_sp_series = []
-        primes_by_period = {c['period']: float(c['value'] or 0) for c in primes_series}
-        rembourse_by_period = {c['period']: float(c['value'] or 0) for c in rembourse_series}
-        all_periods = sorted(set(primes_by_period.keys()) | set(rembourse_by_period.keys()))
-        for period in all_periods:
-            prime = primes_by_period.get(period, 0)
-            remboursement = rembourse_by_period.get(period, 0)
-            ratio = remboursement / prime if prime else None
-            ratio_sp_series.append({"period": period, "value": ratio})
+            # 5. Evolution du ratio S/P (consommation / prime)
+            ratio_sp_series = []
+            primes_by_period = {c['period']: float(c['value'] or 0) for c in primes_series}
+            rembourse_by_period = {c['period']: float(c['value'] or 0) for c in rembourse_series}
+            all_periods = sorted(set(primes_by_period.keys()) | set(rembourse_by_period.keys()))
+            for period in all_periods:
+                prime = primes_by_period.get(period, 0)
+                remboursement = rembourse_by_period.get(period, 0)
+                ratio = remboursement / prime if prime else None
+                ratio_sp_series.append({"period": period, "value": ratio})
 
-        # 6. Evolution du nombre d’assurés principaux
-        nb_principal_series = (
-            InsuredEmployer.objects.filter(employer_id__in=client_ids, role='primary', insured__creation_date__range=(date_start, date_end))
-            .annotate(period=trunc('insured__creation_date'))
-            .values('period')
-            .annotate(value=Count('insured_id', distinct=True))
-            .order_by('period')
-        )
-        nb_principal_series = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": c['value']} for c in nb_principal_series]
-
-        # 7. Evolution du nombre d’assurés total
-        nb_total_series = (
-            InsuredEmployer.objects.filter(employer_id__in=client_ids, insured__creation_date__range=(date_start, date_end))
-            .annotate(period=trunc('insured__creation_date'))
-            .values('period')
-            .annotate(value=Count('insured_id', distinct=True))
-            .order_by('period')
-        )
-        nb_total_series = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": c['value']} for c in nb_total_series]
-
-        # 8. Evolution du nombre de chaque type d’assurés
-        nb_by_role = {}
-        for role in ['primary', 'spouse', 'child', 'other']:
-            role_series = (
-                InsuredEmployer.objects.filter(employer_id__in=client_ids, role=role, insured__creation_date__range=(date_start, date_end))
+            # 6. Evolution du nombre d'assurés principaux
+            nb_principal_series = (
+                InsuredEmployer.objects.filter(employer_id__in=client_ids, role='primary', insured__creation_date__range=(date_start, date_end))
                 .annotate(period=trunc('insured__creation_date'))
                 .values('period')
                 .annotate(value=Count('insured_id', distinct=True))
                 .order_by('period')
             )
-            nb_by_role[role] = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": c['value']} for c in role_series]
+            nb_principal_series = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": c['value']} for c in nb_principal_series]
 
-        # 9. Evolution du top 5 clients ayant le plus consommé
-        top_clients = (
-            claims.values('policy__client_id')
-            .annotate(total_conso=Sum('invoice__reimbursed_amount'))
-            .order_by('-total_conso')[:5]
-        )
-        top_client_ids = [c['policy__client_id'] for c in top_clients]
-        top_clients_map = {c['policy__client_id']: float(c['total_conso'] or 0) for c in top_clients}
-        client_names = {c.id: c.name for c in Client.objects.filter(id__in=top_client_ids)}
-        top_clients_series = []
-        for client_id in top_client_ids:
-            client_claims = claims.filter(policy__client_id=client_id)
-            client_series = (
-                client_claims.annotate(period=trunc('settlement_date'))
+            # 7. Evolution du nombre d'assurés total
+            nb_total_series = (
+                InsuredEmployer.objects.filter(employer_id__in=client_ids, insured__creation_date__range=(date_start, date_end))
+                .annotate(period=trunc('insured__creation_date'))
                 .values('period')
-                .annotate(value=Sum('invoice__reimbursed_amount'))
+                .annotate(value=Count('insured_id', distinct=True))
                 .order_by('period')
             )
-            client_series = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": float(c['value'] or 0)} for c in client_series]
-            top_clients_series.append({
-                "client_id": client_id,
-                "client_name": client_names.get(client_id, str(client_id)),
-                "series": client_series
-            })
+            nb_total_series = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": c['value']} for c in nb_total_series]
 
-        # Helper pour convertir une date en timestamp ms
-        def to_timestamp_ms(dt):
-            import datetime
-            if hasattr(dt, 'timestamp'):
-                return int(dt.timestamp() * 1000)
-            elif isinstance(dt, datetime.date):
-                return int(datetime.datetime(dt.year, dt.month, dt.day).timestamp() * 1000)
-            else:
-                return int(dt)
+            # 8. Evolution du nombre de chaque type d'assurés
+            nb_by_role = {}
+            for role in ['primary', 'spouse', 'child', 'other']:
+                role_series = (
+                    InsuredEmployer.objects.filter(employer_id__in=client_ids, role=role, insured__creation_date__range=(date_start, date_end))
+                    .annotate(period=trunc('insured__creation_date'))
+                    .values('period')
+                    .annotate(value=Count('insured_id', distinct=True))
+                    .order_by('period')
+                )
+                nb_by_role[role] = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": c['value']} for c in role_series]
 
-        def serie_to_pairs(serie):
-            return [[to_timestamp_ms(point['period']), float(point['value'] or 0)] for point in serie]
+            # 9. Evolution du top 5 clients ayant le plus consommé
+            top_clients = (
+                claims.values('policy__client_id')
+                .annotate(total_conso=Sum('invoice__reimbursed_amount'))
+                .order_by('-total_conso')[:5]
+            )
+            top_client_ids = [c['policy__client_id'] for c in top_clients]
+            top_clients_map = {c['policy__client_id']: float(c['total_conso'] or 0) for c in top_clients}
+            client_names = {c.id: c.name for c in Client.objects.filter(id__in=top_client_ids)}
+            top_clients_series = []
+            for client_id in top_client_ids:
+                client_claims = claims.filter(policy__client_id=client_id)
+                client_series = (
+                    client_claims.annotate(period=trunc('settlement_date'))
+                    .values('period')
+                    .annotate(value=Sum('invoice__reimbursed_amount'))
+                    .order_by('period')
+                )
+                client_series = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": float(c['value'] or 0)} for c in client_series]
+                top_clients_series.append({
+                    "client_id": client_id,
+                    "client_name": client_names.get(client_id, str(client_id)),
+                    "series": client_series
+                })
 
-        # --- Helper pour générer toutes les périodes de la granularité ---
-        def generate_periods(date_start, date_end, granularity):
-            from dateutil.relativedelta import relativedelta
-            periods = []
-            current = date_start
-            while current <= date_end:
-                periods.append(current)
-                if granularity == 'day':
-                    current += timedelta(days=1)
-                elif granularity == 'month':
-                    current += relativedelta(months=1)
-                elif granularity == 'year':
-                    current += relativedelta(years=1)
-            return periods
+            # Helper pour convertir une date en timestamp ms
+            def to_timestamp_ms(dt):
+                if hasattr(dt, 'timestamp'):
+                    return int(dt.timestamp() * 1000)
+                elif isinstance(dt, date):
+                    return int(datetime(dt.year, dt.month, dt.day).timestamp() * 1000)
+                else:
+                    return int(dt)
 
-        # --- Helper pour remplir la série sur toutes les périodes ---
-        def fill_full_series(periods, serie):
-            # On convertit toutes les périodes en datetime.date pour la clé
-            def to_date(obj):
-                if hasattr(obj, 'date'):
-                    return obj.date()
-                return obj
-            value_map = {to_date(point['period']): point['value'] for point in serie}
-            last_value = None
-            result = []
-            for period in periods:
-                period_date = to_date(period)
-                if period_date in value_map:
-                    last_value = value_map[period_date]
-                result.append({'period': period, 'value': last_value})
-            return result
+            def serie_to_pairs(serie):
+                return [[to_timestamp_ms(point['period']), float(point['value'] or 0)] for point in serie]
 
-        # Appliquer la logique de granularité à plusieurs séries
-        periods = generate_periods(date_start, date_end, granularity)
+            # --- Helper pour générer toutes les périodes de la granularité ---
+            def generate_periods(date_start, date_end, granularity):
+                periods = []
+                current = date_start
+                while current <= date_end:
+                    periods.append(current)
+                    if granularity == 'day':
+                        current += timedelta(days=1)
+                    elif granularity == 'month':
+                        current += relativedelta(months=1)
+                    elif granularity == 'quarter':
+                        current += relativedelta(months=3)
+                    else:  # year
+                        current += relativedelta(years=1)
+                return periods
 
-        clients_series_full = fill_full_series(periods, clients_series)
-        primes_series_full = fill_full_series(periods, primes_series)
-        rembourse_series_full = fill_full_series(periods, rembourse_series)
-        nb_principal_series_full = fill_full_series(periods, nb_principal_series)
-        nb_total_series_full = fill_full_series(periods, nb_total_series)
+            # --- Helper pour remplir la série sur toutes les périodes ---
+            def fill_full_series(periods, serie):
+                # On convertit toutes les périodes en datetime.date pour la clé
+                def to_date(obj):
+                    if hasattr(obj, 'date'):
+                        return obj.date()
+                    elif isinstance(obj, datetime):
+                        return obj.date()
+                    return obj
+                
+                value_map = {to_date(point['period']): point['value'] for point in serie}
+                last_value = None
+                result = []
+                for period in periods:
+                    period_date = to_date(period)
+                    if period_date in value_map:
+                        last_value = value_map[period_date]
+                    result.append({'period': period, 'value': last_value})
+                return result
 
-        clients_series_pairs = serie_to_pairs(clients_series_full)
-        primes_series_pairs = serie_to_pairs(primes_series_full)
-        rembourse_series_pairs = serie_to_pairs(rembourse_series_full)
-        nb_principal_series_pairs = serie_to_pairs(nb_principal_series_full)
-        nb_total_series_pairs = serie_to_pairs(nb_total_series_full)
+            # Générer toutes les périodes
+            periods = generate_periods(date_start, date_end, granularity)
 
-        # Les autres séries restent inchangées
-        partenaires_series_pairs = serie_to_pairs(partenaires_series)
-        ratio_sp_series_pairs = serie_to_pairs(ratio_sp_series)
+            # Appliquer le remplissage aux séries sélectionnées
+            clients_series_full = fill_full_series(periods, clients_series)
+            primes_series_full = fill_full_series(periods, primes_series)
+            rembourse_series_full = fill_full_series(periods, rembourse_series)
+            nb_principal_series_full = fill_full_series(periods, nb_principal_series)
+            nb_total_series_full = fill_full_series(periods, nb_total_series)
 
-        # Séries par type d'assuré
-        nb_by_role_pairs = {}
-        for role, serie in nb_by_role.items():
-            nb_by_role_pairs[role] = serie_to_pairs(serie)
+            # Convertir en pairs
+            clients_series_pairs = serie_to_pairs(clients_series_full)
+            primes_series_pairs = serie_to_pairs(primes_series_full)
+            rembourse_series_pairs = serie_to_pairs(rembourse_series_full)
+            nb_principal_series_pairs = serie_to_pairs(nb_principal_series_full)
+            nb_total_series_pairs = serie_to_pairs(nb_total_series_full)
 
-        # Top 5 clients consommation
-        top_clients_series_pairs = []
-        for top in top_clients_series:
-            top_clients_series_pairs.append({
-                "client_id": top["client_id"],
-                "client_name": top["client_name"],
-                "series": serie_to_pairs(top["series"])
-            })
+            # Les autres séries restent inchangées
+            partenaires_series_pairs = serie_to_pairs(partenaires_series)
+            ratio_sp_series_pairs = serie_to_pairs(ratio_sp_series)
 
-        return Response({
-            "granularity": granularity,
-            "clients_series": clients_series_pairs,
-            "prime_globale_series": primes_series_pairs,
-            "montant_rembourse_series": rembourse_series_pairs,
-            "partenaires_series": partenaires_series_pairs,
-            "ratio_sp_series": ratio_sp_series_pairs,
-            "nb_assures_principaux_series": nb_principal_series_pairs,
-            "nb_assures_total_series": nb_total_series_pairs,
-            "nb_assures_par_type_series": nb_by_role_pairs,
-            "top5_clients_conso_series": top_clients_series_pairs
-        }, status=status.HTTP_200_OK)
+            # Séries par type d'assuré
+            nb_by_role_pairs = {}
+            for role, serie in nb_by_role.items():
+                nb_by_role_pairs[role] = serie_to_pairs(serie)
+
+            # Top 5 clients consommation
+            top_clients_series_pairs = []
+            for top in top_clients_series:
+                top_clients_series_pairs.append({
+                    "client_id": top["client_id"],
+                    "client_name": top["client_name"],
+                    "series": serie_to_pairs(top["series"])
+                })
+
+            return Response({
+                "granularity": granularity,
+                "clients_series": clients_series_pairs,
+                "prime_globale_series": primes_series_pairs,
+                "montant_rembourse_series": rembourse_series_pairs,
+                "partenaires_series": partenaires_series_pairs,
+                "ratio_sp_series": ratio_sp_series_pairs,
+                "nb_assures_principaux_series": nb_principal_series_pairs,
+                "nb_assures_total_series": nb_total_series_pairs,
+                "nb_assures_par_type_series": nb_by_role_pairs,
+                "top5_clients_conso_series": top_clients_series_pairs
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            print("ERREUR API CountryStatisticsDetailView:", str(e))
+            traceback.print_exc()
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
