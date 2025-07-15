@@ -1410,6 +1410,28 @@ class CountryStatisticsDetailView(APIView):
             # Génère la liste des labels pour l'axe X
             top_clients_series_categories = [date_label(p, granularity) for p in period_dates]
 
+            # Fonction utilitaire pour le taux d'évolution
+            def compute_evolution_rate(series):
+                if not series or len(series) == 0:
+                    return 0.0
+                if len(series) == 1:
+                    first = last = float(series[0]['value'] or 0)
+                else:
+                    first = float(series[0]['value'] or 0)
+                    last = float(series[-1]['value'] or 0)
+                if first == 0:
+                    if last == 0:
+                        return 0.0
+                    else:
+                        return "Nouveau"
+                return round(100 * (last - first) / abs(first), 2)
+
+            clients_evolution_rate = compute_evolution_rate(clients_series)
+            prime_globale_evolution_rate = compute_evolution_rate(primes_series)
+            montant_rembourse_evolution_rate = compute_evolution_rate(rembourse_series)
+            nb_assures_principaux_evolution_rate = compute_evolution_rate(nb_principal_series)
+            nb_assures_total_evolution_rate = compute_evolution_rate(nb_total_series)
+
             return Response({
                 "granularity": granularity,
                 "clients_series": clients_series_pairs,
@@ -1421,7 +1443,12 @@ class CountryStatisticsDetailView(APIView):
                 "nb_assures_total_series": nb_total_series_pairs,
                 "nb_assures_par_type_series": nb_by_role_series,
                 "top5_clients_conso_series": top_clients_series_multi,
-                "top5_clients_conso_categories": top_clients_series_categories
+                "top5_clients_conso_categories": top_clients_series_categories,
+                "clients_evolution_rate": clients_evolution_rate,
+                "prime_globale_evolution_rate": prime_globale_evolution_rate,
+                "montant_rembourse_evolution_rate": montant_rembourse_evolution_rate,
+                "nb_assures_principaux_evolution_rate": nb_assures_principaux_evolution_rate,
+                "nb_assures_total_evolution_rate": nb_assures_total_evolution_rate
             }, status=status.HTTP_200_OK)
 
         except Exception as e:
