@@ -1,7 +1,8 @@
 from django.urls import path
-from .views import ClientStatisticListView, ClientStatisticView, ClientListPolicyStatisticsView, ClientPolicyStatisticsView, CountriesListStatisticsView, CountryStatisticsDetailView
+from .views import ClientStatisticListView, ClientStatisticView, ClientListPolicyStatisticsView, ClientPolicyStatisticsView, CountriesListStatisticsView, CountryStatisticsDetailView, CountriesCommomStatisticsView
 
 urlpatterns = [
+    path('countries/common-statistics/', CountriesCommomStatisticsView.as_view(), name='countries-common-statistics'),
     path('countries/<int:country_id>/statistics/', CountryStatisticsDetailView.as_view(), name='country-statistics-detail'),
     path('countries/statistics/', CountriesListStatisticsView.as_view(), name='countries-statistics'),
     path('country/clients/', ClientStatisticListView.as_view()),
