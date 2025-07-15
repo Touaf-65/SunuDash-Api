@@ -1407,6 +1407,8 @@ class CountryStatisticsDetailView(APIView):
                 value_map = {to_date(point['period']): float(point['value'] or 0) for point in top["series"]}
                 data = [value_map.get(p, 0) for p in period_dates]
                 top_clients_series_multi.append({"name": name, "data": data})
+            # Génère la liste des labels pour l'axe X
+            top_clients_series_categories = [date_label(p, granularity) for p in period_dates]
 
             return Response({
                 "granularity": granularity,
@@ -1418,7 +1420,8 @@ class CountryStatisticsDetailView(APIView):
                 "nb_assures_principaux_series": nb_principal_series_pairs,
                 "nb_assures_total_series": nb_total_series_pairs,
                 "nb_assures_par_type_series": nb_by_role_series,
-                "top5_clients_conso_series": top_clients_series_multi
+                "top5_clients_conso_series": top_clients_series_multi,
+                "top5_clients_conso_categories": top_clients_series_categories
             }, status=status.HTTP_200_OK)
 
         except Exception as e:
