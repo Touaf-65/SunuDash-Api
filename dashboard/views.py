@@ -1194,6 +1194,18 @@ class CountryStatisticsDetailView(APIView):
             )
             rembourse_series = [{"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": float(c['value'] or 0)} for c in rembourse_series]
 
+    # Montant réclamé (comme montant remboursé)
+            reclamation_series = (
+                claims.annotate(period=trunc('settlement_date'))
+                .values('period')
+                .annotate(value=Sum('invoice__claimed_amount'))
+                .order_by('period')
+            )
+            reclamation_series = [
+                {"period": c['period'].date() if hasattr(c['period'], 'date') else c['period'], "value": c['value'] or 0}
+                for c in reclamation_series
+            ]
+
             # 4. Evolution du nombre de partenaires (distincts dans les claims)
             partenaires_series = (
                 claims.annotate(period=trunc('settlement_date'))
@@ -1326,6 +1338,7 @@ class CountryStatisticsDetailView(APIView):
             clients_series_full = fill_full_series(periods, clients_series)
             primes_series_full = fill_full_series(periods, primes_series)
             rembourse_series_full = fill_full_series(periods, rembourse_series)
+            reclamation_series_full = fill_full_series(periods, reclamation_series)
             nb_principal_series_full = fill_full_series(periods, nb_principal_series)
             nb_total_series_full = fill_full_series(periods, nb_total_series)
 
@@ -1333,6 +1346,7 @@ class CountryStatisticsDetailView(APIView):
             clients_series_pairs = serie_to_pairs(clients_series_full)
             primes_series_pairs = serie_to_pairs(primes_series_full)
             rembourse_series_pairs = serie_to_pairs(rembourse_series_full)
+            reclamation_series_pairs = serie_to_pairs(reclamation_series_full)
             nb_principal_series_pairs = serie_to_pairs(nb_principal_series_full)
             nb_total_series_pairs = serie_to_pairs(nb_total_series_full)
 
@@ -1410,6 +1424,17 @@ class CountryStatisticsDetailView(APIView):
             # Génère la liste des labels pour l'axe X
             top_clients_series_categories = [date_label(p, granularity) for p in period_dates]
 
+            
+
+            actual_montant_reclame_value = float(reclamation_series_full[-1]['value'] if reclamation_series_full else 0)
+
+            actual_nb_clients_value = float(nb_total_series[-1]['value'] if nb_total_series else 0)
+            actual_prime_globale_value = float(primes_series[-1]['value'] if primes_series else 0)
+            actual_montant_rembourse_value = float(rembourse_series[-1]['value'] if rembourse_series else 0)
+            
+            actual_nb_assures_principaux_value = float(nb_principal_series[-1]['value'] if nb_principal_series else 0)
+            actual_nb_assures_total_value = float(nb_total_series[-1]['value'] if nb_total_series else 0)
+
             # Fonction utilitaire pour le taux d'évolution
             def compute_evolution_rate(series):
                 if not series or len(series) == 0:
@@ -1429,24 +1454,38 @@ class CountryStatisticsDetailView(APIView):
             clients_evolution_rate = compute_evolution_rate(clients_series)
             prime_globale_evolution_rate = compute_evolution_rate(primes_series)
             montant_rembourse_evolution_rate = compute_evolution_rate(rembourse_series)
+            montant_reclame_evolution_rate = compute_evolution_rate(reclamation_series)
             nb_assures_principaux_evolution_rate = compute_evolution_rate(nb_principal_series)
             nb_assures_total_evolution_rate = compute_evolution_rate(nb_total_series)
 
+
             return Response({
                 "granularity": granularity,
+
                 "clients_series": clients_series_pairs,
                 "prime_globale_series": primes_series_pairs,
                 "montant_rembourse_series": rembourse_series_pairs,
+                "montant_reclame_series": reclamation_series_pairs,
                 "partenaires_series": partenaires_series_pairs,
                 "ratio_sp_series": ratio_sp_series_pairs,
                 "nb_assures_principaux_series": nb_principal_series_pairs,
                 "nb_assures_total_series": nb_total_series_pairs,
                 "nb_assures_par_type_series": nb_by_role_series,
                 "top5_clients_conso_series": top_clients_series_multi,
+
                 "top5_clients_conso_categories": top_clients_series_categories,
+
+                "actual_nb_clients_value": actual_nb_clients_value,
+                "actual_prime_globale_value": actual_prime_globale_value,
+                "actual_montant_rembourse_value": actual_montant_rembourse_value,
+                "actual_montant_reclame_value": actual_montant_reclame_value,
+                "actual_nb_assures_principaux_value": actual_nb_assures_principaux_value,
+                "actual_nb_assures_total_value": actual_nb_assures_total_value,
+
                 "clients_evolution_rate": clients_evolution_rate,
                 "prime_globale_evolution_rate": prime_globale_evolution_rate,
                 "montant_rembourse_evolution_rate": montant_rembourse_evolution_rate,
+                "montant_reclame_evolution_rate": montant_reclame_evolution_rate,
                 "nb_assures_principaux_evolution_rate": nb_assures_principaux_evolution_rate,
                 "nb_assures_total_evolution_rate": nb_assures_total_evolution_rate
             }, status=status.HTTP_200_OK)
