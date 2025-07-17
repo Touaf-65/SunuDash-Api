@@ -160,6 +160,8 @@ class login_user(APIView):
         print(f"Logged User: {user}")
 
         if user is not None:
+            if not user.is_active:
+                return Response({"error": "Votre compte a été désactivé. Veuillez contacter un administrateur."}, status=status.HTTP_403_FORBIDDEN)
             refresh = RefreshToken.for_user(user)
             return Response({
                 'access_token': str(refresh.access_token),
@@ -1130,4 +1132,115 @@ class PasswordResetConfirmView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-    
+class ToggleUserActiveStatusView(APIView):
+    """
+    Vue pour activer/désactiver (geler/dégeler) un utilisateur. Accessible aux admins globaux et territoriaux.
+    """
+    permission_classes = [IsAuthenticated, IsSuperUser | IsGlobalAdmin | IsTerritorialAdmin]
+
+    def post(self, request, pk):
+        try:
+            user = CustomUser.objects.get(pk=pk)
+        except CustomUser.DoesNotExist:
+            return Response({'error': 'Utilisateur non trouvé.'}, status=404)
+
+        # L'utilisateur qui effectue l'action doit être actif
+        if not request.user.is_active:
+            return Response({'error': "Votre compte est inactif, vous ne pouvez pas effectuer cette action."}, status=403)
+
+        # On ne peut pas désactiver son propre compte
+        if user == request.user:
+            return Response({'error': 'Vous ne pouvez pas désactiver votre propre compte.'}, status=403)
+
+        # Gestion des droits selon le rôle de l'admin
+        actor = request.user
+        # Territorial admin: peut désactiver seulement les utilisateurs de son pays qui ne sont PAS admin territorial
+        if actor.is_admin_territorial():
+            if (user.country != actor.country) or user.is_admin_territorial():
+                return Response({'error': "Vous n'avez le droit de désactiver que les utilisateurs de votre pays qui ne sont pas administrateurs territoriaux."}, status=403)
+        # Global admin: peut désactiver les admins territoriaux
+        elif actor.is_admin_global():
+            if not user.is_admin_territorial():
+                return Response({'error': "Un admin global ne peut désactiver que les administrateurs territoriaux."}, status=403)
+        # Superuser: peut désactiver les admins globaux
+        elif actor.is_superuser_role():
+            if not user.is_admin_global():
+                return Response({'error': "Un superuser ne peut désactiver que les administrateurs globaux."}, status=403)
+        # Sinon, refus
+        else:
+            return Response({'error': "Vous n'avez pas l'autorisation d'effectuer cette action."}, status=403)
+
+        is_active = request.data.get('is_active')
+        if is_active is None:
+            return Response({'error': 'Le champ is_active est requis (true/false).'}, status=400)
+
+        user.is_active = bool(is_active)
+        user.save()
+
+        from django.core.mail import send_mail
+        from django.conf import settings
+        # Notification email selon l'état du compte
+        if user.is_active is False:
+            subject = "Votre compte Sunu Dash a été désactivé"
+            plain_message = (
+                f"Bonjour {user.first_name},\n\n"
+                "Votre compte Sunu Dash a été désactivé par un administrateur. "
+                "Vous ne pouvez plus accéder à la plateforme pour le moment.\n"
+                "Si vous pensez qu'il s'agit d'une erreur ou souhaitez des explications, veuillez contacter l'administrateur de votre organisation."
+            )
+            html_message = f"""
+                <html>
+                <body style='font-family: Arial, sans-serif; background: #f8f9fa; padding: 32px;'>
+                    <div style='max-width: 480px; margin: auto; background: #fff; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); padding: 32px;'>
+                        <h2 style='color: #d9534f; margin-bottom: 12px;'>Compte désactivé</h2>
+                        <p style='font-size: 16px; color: #222;'>Bonjour <strong>{user.first_name}</strong>,</p>
+                        <p style='font-size: 16px; color: #222;'>Votre compte <b>Sunu Dash</b> a été <b>désactivé</b> par un administrateur.</p>
+                        <p style='font-size: 15px; color: #444;'>Vous ne pouvez plus accéder à la plateforme pour le moment.</p>
+                        <p style='font-size: 15px; color: #444;'>Si vous pensez qu'il s'agit d'une erreur ou souhaitez des explications, veuillez contacter l'administrateur de votre organisation.</p>
+                        <hr style='margin: 28px 0;'>
+                        <p style='font-size: 13px; color: #999;'>Ceci est un message automatique. Merci de ne pas répondre directement à cet email.</p>
+                    </div>
+                </body>
+                </html>
+            """
+            send_mail(
+                subject,
+                plain_message,
+                settings.EMAIL_HOST_USER,
+                [user.email],
+                fail_silently=True,
+                html_message=html_message
+            )
+        elif user.is_active is True:
+            subject = "Votre compte Sunu Dash a été réactivé"
+            plain_message = (
+                f"Bonjour {user.first_name},\n\n"
+                "Votre compte Sunu Dash a été réactivé par un administrateur. "
+                "Vous pouvez à nouveau accéder à la plateforme Sunu Dash.\n"
+                "Si vous avez des questions, veuillez contacter l'administrateur de votre organisation."
+            )
+            html_message = f"""
+                <html>
+                <body style='font-family: Arial, sans-serif; background: #f8f9fa; padding: 32px;'>
+                    <div style='max-width: 480px; margin: auto; background: #fff; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); padding: 32px;'>
+                        <h2 style='color: #28a745; margin-bottom: 12px;'>Compte réactivé</h2>
+                        <p style='font-size: 16px; color: #222;'>Bonjour <strong>{user.first_name}</strong>,</p>
+                        <p style='font-size: 16px; color: #222;'>Votre compte <b>Sunu Dash</b> a été <b>réactivé</b> par un administrateur.</p>
+                        <p style='font-size: 15px; color: #444;'>Vous pouvez à nouveau accéder à la plateforme Sunu Dash.</p>
+                        <p style='font-size: 15px; color: #444;'>Si vous avez des questions, veuillez contacter l'administrateur de votre organisation.</p>
+                        <hr style='margin: 28px 0;'>
+                        <p style='font-size: 13px; color: #999;'>Ceci est un message automatique. Merci de ne pas répondre directement à cet email.</p>
+                    </div>
+                </body>
+                </html>
+            """
+            send_mail(
+                subject,
+                plain_message,
+                settings.EMAIL_HOST_USER,
+                [user.email],
+                fail_silently=True,
+                html_message=html_message
+            )
+
+        return Response({'message': f"Compte {'activé' if user.is_active else 'désactivé'} avec succès.", 'user': UserSerializer(user).data})

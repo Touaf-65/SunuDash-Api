@@ -1,7 +1,8 @@
 from django.urls import path
-from .views import register_user, login_user, CreateCountryView, CreateCountryFromExcel, AssignTerritorialAdmin, ListCountriesView, CreateUserByTerritorialAdmin, PasswordResetRequestView, PasswordResetConfirmView, CreateTerritorialAdminView, CreateTerritorialAdminsFromExcel, CreateGlobalAdminView, GlobalAdminListView, GlobalAdminDetailView, GlobalAdminUpdateView, GlobalAdminDeleteView, CreateGlobalAdminsFromExcel, CountryDetailView, CountryUpdateView, CountryDeleteView, TerritorialAdminListView, TerritorialAdminDetailView, TerritorialAdminUpdateView, TerritorialAdminDeleteView, SimpleUserListView, SimpleUserDetailView, SimpleUserUpdateView, SimpleUserDeleteView, SuperuserCreateAPIView, GetConnectedUserByLogin
+from .views import register_user, login_user, CreateCountryView, CreateCountryFromExcel, AssignTerritorialAdmin, ListCountriesView, CreateUserByTerritorialAdmin, PasswordResetRequestView, PasswordResetConfirmView, CreateTerritorialAdminView, CreateTerritorialAdminsFromExcel, CreateGlobalAdminView, GlobalAdminListView, GlobalAdminDetailView, GlobalAdminUpdateView, GlobalAdminDeleteView, CreateGlobalAdminsFromExcel, CountryDetailView, CountryUpdateView, CountryDeleteView, TerritorialAdminListView, TerritorialAdminDetailView, TerritorialAdminUpdateView, TerritorialAdminDeleteView, SimpleUserListView, SimpleUserDetailView, SimpleUserUpdateView, SimpleUserDeleteView, SuperuserCreateAPIView, GetConnectedUserByLogin, ToggleUserActiveStatusView
 
 urlpatterns = [
+    path('users/<int:pk>/toggle-active/', ToggleUserActiveStatusView.as_view(), name='toggle-user-active'),
     path('create_superuser/', SuperuserCreateAPIView.as_view(), name='create_superuser'),
 
     path('register/', register_user.as_view(), name='register_user'),

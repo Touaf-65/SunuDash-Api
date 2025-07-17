@@ -14,7 +14,7 @@ class UserSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = CustomUser
-        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'country', 'role')
+        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'country', 'role', 'is_active')
 
 class PasswordResetRequestSerializer(serializers.Serializer):
     email = serializers.EmailField()
