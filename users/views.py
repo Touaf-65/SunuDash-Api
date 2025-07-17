@@ -11,7 +11,7 @@ from django.contrib.auth import authenticate
 from django.db.models import Q
 from django.contrib.auth.models import User
 from rest_framework_simplejwt.tokens import RefreshToken
-from .permissions import IsSuperUser, IsGlobalAdmin, IsTerritorialAdmin
+from .permissions import IsSuperUser, IsGlobalAdmin, IsTerritorialAdmin, IsTerritorialAdminWithCountry 
 import random
 import string
 import os
@@ -27,8 +27,6 @@ class SuperuserCreateAPIView(APIView):
     API temporaire pour créer le superuser via une requête POST.
     Désactivée automatiquement dès qu'un superuser existe.
     """
-    authentication_classes = []
-    permission_classes = []
 
     def post(self, request):
 
@@ -69,10 +67,29 @@ class SuperuserCreateAPIView(APIView):
         try:
             send_mail(
                 'Votre compte superuser a été créé',
-                f'Votre username est {user.username} et votre mot de passe est {password}',
+                f'Bonjour {user.first_name},\n\nVotre nom d\'utilisateur est : {user.username}\nVotre mot de passe est : {password}\nVotre rôle sur la plateforme est : Superuser.\n\nMerci de changer votre mot de passe après votre première connexion.',
                 from_email,
                 [email],
-                fail_silently=False
+                fail_silently=False,
+                html_message=f"""
+                <html>
+                <body style='font-family: Arial, sans-serif; background: #f8f9fa; padding: 32px;'>
+                    <div style='max-width: 480px; margin: auto; background: #fff; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); padding: 32px;'>
+                        <h2 style='color: #2d5be3; margin-bottom: 12px;'>Bienvenue sur Sunu Dash !</h2>
+                        <p style='font-size: 16px; color: #222;'>Bonjour <strong>{user.first_name}</strong>,</p>
+                        <p style='font-size: 16px; color: #222;'>Votre compte <b>Superuser</b> a été créé avec succès. Voici vos identifiants&nbsp;:</p>
+                        <ul style='font-size: 16px; color: #222; list-style: none; padding: 0;'>
+                            <li><b>Nom d'utilisateur&nbsp;:</b> <span style='color: #2d5be3;'>{user.username}</span></li>
+                            <li><b>Mot de passe&nbsp;:</b> <span style='color: #2d5be3;'>{password}</span></li>
+                            <li><b>Rôle&nbsp;:</b> <span style='color: #2d5be3;'>Superuser</span></li>
+                        </ul>
+                        <p style='font-size: 15px; color: #444; margin-top: 20px;'>Merci de changer votre mot de passe après votre première connexion pour garantir la sécurité de votre compte.</p>
+                        <hr style='margin: 28px 0;'>
+                        <p style='font-size: 13px; color: #999;'>Ceci est un message automatique. Merci de ne pas répondre directement à cet email.</p>
+                    </div>
+                </body>
+                </html>
+                """
             )
         except Exception as e:
             return Response({'detail': f'User created but failed to send email: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -212,11 +229,30 @@ class CreateGlobalAdminView(APIView):
 
         try:
             send_mail(
-                'Your new account',
-                f'Your username is {user.username} and your password is {password}',
+                'Votre nouveau compte Administrateur Global',
+                f"Bonjour {user.first_name},\n\nVotre nom d'utilisateur est : {user.username}\nVotre mot de passe est : {password}\nVotre rôle sur la plateforme est : Administrateur Global.\n\nMerci de changer votre mot de passe après votre première connexion.",
                 from_email,
                 [email],
-                fail_silently=False
+                fail_silently=False,
+                html_message=f"""
+                <html>
+                <body style='font-family: Arial, sans-serif; background: #f8f9fa; padding: 32px;'>
+                    <div style='max-width: 480px; margin: auto; background: #fff; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); padding: 32px;'>
+                        <h2 style='color: #2d5be3; margin-bottom: 12px;'>Bienvenue sur Sunu Dash !</h2>
+                        <p style='font-size: 16px; color: #222;'>Bonjour <strong>{user.first_name}</strong>,</p>
+                        <p style='font-size: 16px; color: #222;'>Votre compte <b>Administrateur Global</b> a été créé avec succès. Voici vos identifiants&nbsp;:</p>
+                        <ul style='font-size: 16px; color: #222; list-style: none; padding: 0;'>
+                            <li><b>Nom d'utilisateur&nbsp;:</b> <span style='color: #2d5be3;'>{user.username}</span></li>
+                            <li><b>Mot de passe&nbsp;:</b> <span style='color: #2d5be3;'>{password}</span></li>
+                            <li><b>Rôle&nbsp;:</b> <span style='color: #2d5be3;'>Administrateur Global</span></li>
+                        </ul>
+                        <p style='font-size: 15px; color: #444; margin-top: 20px;'>Merci de changer votre mot de passe après votre première connexion pour garantir la sécurité de votre compte.</p>
+                        <hr style='margin: 28px 0;'>
+                        <p style='font-size: 13px; color: #999;'>Ceci est un message automatique. Merci de ne pas répondre directement à cet email.</p>
+                    </div>
+                </body>
+                </html>
+                """
             )
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -275,11 +311,30 @@ class CreateGlobalAdminsFromExcel(APIView):
                     f.write(f'Username: {user.username}, Password: {password}\n')
 
                 send_mail(
-                    'Your new account',
-                    f'Your username is {user.username} and your password is {password}',
+                    'Votre nouveau compte Administrateur Global',
+                    f'Bonjour {user.first_name},\n\nVotre nom d\'utilisateur est : {user.username}\nVotre mot de passe est : {password}\nVotre rôle sur la plateforme est : Administrateur Global.\n\nMerci de changer votre mot de passe après votre première connexion.',
                     settings.EMAIL_HOST_USER,
                     [email],
-                    fail_silently=False
+                    fail_silently=False,
+                    html_message=f"""
+                    <html>
+                    <body style='font-family: Arial, sans-serif; background: #f8f9fa; padding: 32px;'>
+                        <div style='max-width: 480px; margin: auto; background: #fff; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); padding: 32px;'>
+                            <h2 style='color: #2d5be3; margin-bottom: 12px;'>Bienvenue sur Sunu Dash !</h2>
+                            <p style='font-size: 16px; color: #222;'>Bonjour <strong>{user.first_name}</strong>,</p>
+                            <p style='font-size: 16px; color: #222;'>Votre compte <b>Administrateur Global</b> a été créé avec succès. Voici vos identifiants&nbsp;:</p>
+                            <ul style='font-size: 16px; color: #222; list-style: none; padding: 0;'>
+                                <li><b>Nom d'utilisateur&nbsp;:</b> <span style='color: #2d5be3;'>{user.username}</span></li>
+                                <li><b>Mot de passe&nbsp;:</b> <span style='color: #2d5be3;'>{password}</span></li>
+                                <li><b>Rôle&nbsp;:</b> <span style='color: #2d5be3;'>Administrateur Global</span></li>
+                            </ul>
+                            <p style='font-size: 15px; color: #444; margin-top: 20px;'>Merci de changer votre mot de passe après votre première connexion pour garantir la sécurité de votre compte.</p>
+                            <hr style='margin: 28px 0;'>
+                            <p style='font-size: 13px; color: #999;'>Ceci est un message automatique. Merci de ne pas répondre directement à cet email.</p>
+                        </div>
+                    </body>
+                    </html>
+                    """
                 )
 
                 created_users.append(user)
@@ -489,11 +544,30 @@ class CreateTerritorialAdminView(APIView):
 
             try:
                 send_mail(
-                    'Your new account',
-                    f'Your username is {user.username} and your password is {password}',
+                    'Votre nouveau compte Administrateur Territorial',
+                    f'Bonjour {user.first_name},\n\nVotre nom d\'utilisateur est : {user.username}\nVotre mot de passe est : {password}\nVotre rôle sur la plateforme est : Administrateur Territorial.\n\nMerci de changer votre mot de passe après votre première connexion.',
                     from_email,
                     [email],
-                    fail_silently=False
+                    fail_silently=False,
+                    html_message=f"""
+                    <html>
+                    <body style='font-family: Arial, sans-serif; background: #f8f9fa; padding: 32px;'>
+                        <div style='max-width: 480px; margin: auto; background: #fff; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); padding: 32px;'>
+                            <h2 style='color: #2d5be3; margin-bottom: 12px;'>Bienvenue sur Sunu Dash !</h2>
+                            <p style='font-size: 16px; color: #222;'>Bonjour <strong>{user.first_name}</strong>,</p>
+                            <p style='font-size: 16px; color: #222;'>Votre compte <b>Administrateur Territorial</b> a été créé avec succès. Voici vos identifiants&nbsp;:</p>
+                            <ul style='font-size: 16px; color: #222; list-style: none; padding: 0;'>
+                                <li><b>Nom d'utilisateur&nbsp;:</b> <span style='color: #2d5be3;'>{user.username}</span></li>
+                                <li><b>Mot de passe&nbsp;:</b> <span style='color: #2d5be3;'>{password}</span></li>
+                                <li><b>Rôle&nbsp;:</b> <span style='color: #2d5be3;'>Administrateur Territorial</span></li>
+                            </ul>
+                            <p style='font-size: 15px; color: #444; margin-top: 20px;'>Merci de changer votre mot de passe après votre première connexion pour garantir la sécurité de votre compte.</p>
+                            <hr style='margin: 28px 0;'>
+                            <p style='font-size: 13px; color: #999;'>Ceci est un message automatique. Merci de ne pas répondre directement à cet email.</p>
+                        </div>
+                    </body>
+                    </html>
+                    """
                 )
             except Exception as e:
                 return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -555,11 +629,30 @@ class CreateTerritorialAdminsFromExcel(APIView):
                     f.write(f'Username: {user.username}, Password: {password}\n')
 
                 send_mail(
-                    'Your new account',
-                    f'Your username is {user.username} and your password is {password}',
+                    'Votre nouveau compte Administrateur Territorial',
+                    f'Bonjour {user.first_name},\n\nVotre nom d\'utilisateur est : {user.username}\nVotre mot de passe est : {password}\nVotre rôle sur la plateforme est : Administrateur Territorial.\n\nMerci de changer votre mot de passe après votre première connexion.',
                     settings.EMAIL_HOST_USER,
                     [email],
-                    fail_silently=False
+                    fail_silently=False,
+                    html_message=f"""
+                    <html>
+                    <body style='font-family: Arial, sans-serif; background: #f8f9fa; padding: 32px;'>
+                        <div style='max-width: 480px; margin: auto; background: #fff; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); padding: 32px;'>
+                            <h2 style='color: #2d5be3; margin-bottom: 12px;'>Bienvenue sur Sunu Dash !</h2>
+                            <p style='font-size: 16px; color: #222;'>Bonjour <strong>{user.first_name}</strong>,</p>
+                            <p style='font-size: 16px; color: #222;'>Votre compte <b>Administrateur Territorial</b> a été créé avec succès. Voici vos identifiants&nbsp;:</p>
+                            <ul style='font-size: 16px; color: #222; list-style: none; padding: 0;'>
+                                <li><b>Nom d'utilisateur&nbsp;:</b> <span style='color: #2d5be3;'>{user.username}</span></li>
+                                <li><b>Mot de passe&nbsp;:</b> <span style='color: #2d5be3;'>{password}</span></li>
+                                <li><b>Rôle&nbsp;:</b> <span style='color: #2d5be3;'>Administrateur Territorial</span></li>
+                            </ul>
+                            <p style='font-size: 15px; color: #444; margin-top: 20px;'>Merci de changer votre mot de passe après votre première connexion pour garantir la sécurité de votre compte.</p>
+                            <hr style='margin: 28px 0;'>
+                            <p style='font-size: 13px; color: #999;'>Ceci est un message automatique. Merci de ne pas répondre directement à cet email.</p>
+                        </div>
+                    </body>
+                    </html>
+                    """
                 )
             except Exception as e:
                 return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -645,7 +738,33 @@ class AssignTerritorialAdmin(APIView):
 
             admin.country = country
             admin.save()
-        
+
+            from_email = settings.EMAIL_HOST_USER
+            try:
+                send_mail(
+                    'Affectation à un pays sur Sunu Dash',
+                    f'Bonjour {admin.first_name},\n\nVous avez été désigné comme administrateur territorial pour le pays : {country.name}. Connectez-vous à Sunu Dash pour accéder à vos nouvelles responsabilités.',
+                    from_email,
+                    [admin.email],
+                    fail_silently=False,
+                    html_message=f"""
+                    <html>
+                    <body style='font-family: Arial, sans-serif; background: #f8f9fa; padding: 32px;'>
+                        <div style='max-width: 480px; margin: auto; background: #fff; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); padding: 32px;'>
+                            <h2 style='color: #2d5be3; margin-bottom: 12px;'>Affectation à un pays</h2>
+                            <p style='font-size: 16px; color: #222;'>Bonjour <strong>{admin.first_name}</strong>,</p>
+                            <p style='font-size: 16px; color: #222;'>Vous avez été désigné comme <b>administrateur territorial</b> pour le pays&nbsp;: <span style='color: #2d5be3; font-weight: bold;'>{country.name}</span>.</p>
+                            <p style='font-size: 15px; color: #444; margin-top: 20px;'>Connectez-vous à Sunu Dash pour accéder à vos nouvelles responsabilités et gérer les utilisateurs de ce pays.</p>
+                            <hr style='margin: 28px 0;'>
+                            <p style='font-size: 13px; color: #999;'>Ceci est un message automatique. Merci de ne pas répondre directement à cet email.</p>
+                        </div>
+                    </body>
+                    </html>
+                    """
+                )
+            except Exception as e:
+                return Response({"message": f"{admin.email} assigned as admin of {country.name} mais l'email n'a pas pu être envoyé : {str(e)}"}, status=status.HTTP_200_OK)
+
             return Response({"message": f"{admin.email} assigned as admin of {country.name}"}, status=status.HTTP_200_OK)
         return Response({"detail": "Permission denied."}, status=status.HTTP_403_FORBIDDEN)    
 
@@ -655,7 +774,7 @@ class CreateUserByTerritorialAdmin(APIView):
     """
     Vue pour permettre aux admins territoriaux de créer des utilisateurs dans leur propre pays.
     """
-    permission_classes = [IsAuthenticated, IsTerritorialAdmin]
+    permission_classes = [IsAuthenticated, IsTerritorialAdmin, IsTerritorialAdminWithCountry]
     def post(self, request):
         if not request.user.is_territorial_admin():
             return Response({"error": "Only territorial admins can create users."}, status=status.HTTP_403_FORBIDDEN)
@@ -663,8 +782,18 @@ class CreateUserByTerritorialAdmin(APIView):
         first_name = request.data.get('first_name')
         last_name = request.data.get('last_name')
         email = request.data.get('email')
+        role = request.data.get('role', CustomUser.Roles.RESPONSABLE_OPERATEUR)  # Par défaut Responsable Opérateur de Saisie
         from_email = settings.EMAIL_HOST_USER
-        
+
+        # Rôles autorisés pour un admin territorial
+        allowed_roles = ['CHEF_DEPT_TECH', 'RESP_OPERATEUR']
+        role_labels = {
+            'CHEF_DEPT_TECH': 'Chef Département Technique',
+            'RESP_OPERATEUR': 'Responsable Opérateur de Saisie'
+        }
+        if role not in allowed_roles:
+            return Response({"error": "Rôle non autorisé pour un admin territorial."}, status=status.HTTP_400_BAD_REQUEST)
+
         if not (first_name and last_name and email):
             return Response({"error": "Missing fields."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -677,20 +806,40 @@ class CreateUserByTerritorialAdmin(APIView):
             password=password,
             country=request.user.country
         )
+        user.role = role
+        user.save()
         
         file_path = os.path.join(settings.BASE_DIR, 'users/users_txt', 'simple_users.txt')
 
-            # Écrire dans le fichier texte
+        # Écrire dans le fichier texte
         with open(file_path, 'a') as file:
             file.write(f'Username: {user.username}, Password: {password}\n')
-            
         try:
             send_mail(
-                'Your new account',  
-                f'Your username is {user.username} and your password is {password}',
+                f"Votre nouveau compte {role_labels.get(role, 'Utilisateur')}",
+                f"Bonjour {user.first_name},\n\nVotre nom d'utilisateur est : {user.username}\nVotre mot de passe est : {password}\nVotre rôle sur la plateforme est : {role_labels.get(role, 'Utilisateur')}.\n\nMerci de changer votre mot de passe après votre première connexion.",
                 from_email,
                 [email],
-                fail_silently=False
+                fail_silently=False,
+                html_message=f"""
+                <html>
+                <body style='font-family: Arial, sans-serif; background: #f8f9fa; padding: 32px;'>
+                    <div style='max-width: 480px; margin: auto; background: #fff; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); padding: 32px;'>
+                        <h2 style='color: #2d5be3; margin-bottom: 12px;'>Bienvenue sur Sunu Dash !</h2>
+                        <p style='font-size: 16px; color: #222;'>Bonjour <strong>{user.first_name}</strong>,</p>
+                        <p style='font-size: 16px; color: #222;'>Votre compte <b>{role_labels.get(role, 'Utilisateur')}</b> a été créé avec succès. Voici vos identifiants&nbsp;:</p>
+                        <ul style='font-size: 16px; color: #222; list-style: none; padding: 0;'>
+                            <li><b>Nom d'utilisateur&nbsp;:</b> <span style='color: #2d5be3;'>{user.username}</span></li>
+                            <li><b>Mot de passe&nbsp;:</b> <span style='color: #2d5be3;'>{password}</span></li>
+                            <li><b>Rôle&nbsp;:</b> <span style='color: #2d5be3;'>{role_labels.get(role, 'Utilisateur')}</span></li>
+                        </ul>
+                        <p style='font-size: 15px; color: #444; margin-top: 20px;'>Merci de changer votre mot de passe après votre première connexion pour garantir la sécurité de votre compte.</p>
+                        <hr style='margin: 28px 0;'>
+                        <p style='font-size: 13px; color: #999;'>Ceci est un message automatique. Merci de ne pas répondre directement à cet email.</p>
+                    </div>
+                </body>
+                </html>
+                """
             )
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -704,7 +853,7 @@ class CreateUsersByTerritorialAdminFromExcel(APIView):
     """
     Vue pour permettre aux admins territoriaux de créer des utilisateurs dans leur propre pays.
     """
-    permission_classes = [IsAuthenticated, IsTerritorialAdmin]
+    permission_classes = [IsAuthenticated, IsTerritorialAdmin, IsTerritorialAdminWithCountry]
 
     def post(self, request):
         file = request.FILES.get('file')
@@ -718,7 +867,7 @@ class CreateUsersByTerritorialAdminFromExcel(APIView):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         # Vérifier les en-têtes du fichier Excel
-        required_headers = ['firstname', 'lastname', 'email']
+        required_headers = ['firstname', 'lastname', 'email', 'role']
         if not all(header in df.columns for header in required_headers):
             return Response({'error': 'Missing required headers in the Excel file'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -729,11 +878,47 @@ class CreateUsersByTerritorialAdminFromExcel(APIView):
 
         # Créer les utilisateurs avec les adresses e-mail valides
         created_users = []
+        import unicodedata
+
+        def normalize_role(val):
+            if not isinstance(val, str):
+                return ''
+            # minuscules, sans accent, sans espaces ni underscores
+            val = val.strip().lower()
+            val = unicodedata.normalize('NFD', val)
+            val = ''.join([c for c in val if unicodedata.category(c) != 'Mn'])
+            val = val.replace('_', '').replace(' ', '')
+            return val
+
+        role_variants = {
+            'CHEF_DEPT_TECH': [
+                'chefdepartementtechnique', 'chefdepttech', 'chefdepartement', 'chefdept', 'cheftechnique', 'chef', 'cdt'
+            ],
+            'RESP_OPERATEUR': [
+                'responsableoperateur', 'responsableoperateurdesaisie', 'responsableops', 'respoperateur', 'respops', 'ops', 'responsable', 'ro'
+            ]
+        }
+        def map_role(val):
+            norm = normalize_role(val)
+            for key, variants in role_variants.items():
+                if norm in variants:
+                    return key
+            return None
+
+        role_labels = {
+            'CHEF_DEPT_TECH': 'Chef Département Technique',
+            'RESP_OPERATEUR': 'Responsable Opérateur de Saisie'
+        }
+        invalid_role_rows = []
         for row_idx in valid_rows:
             first_name = df.loc[row_idx, 'firstname']
             last_name = df.loc[row_idx, 'lastname']
             email = df.loc[row_idx, 'email']
-
+            raw_role = df.loc[row_idx, 'role'] if 'role' in df.columns else ''
+            role = map_role(raw_role)
+            if role is None:
+                invalid_role_rows.append(row_idx)
+                continue
             try:
                 password = ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(8))
                 user = CustomUser.objects.create_user(
@@ -743,23 +928,41 @@ class CreateUsersByTerritorialAdminFromExcel(APIView):
                     password=password,
                     country=request.user.country
                 )
-
+                user.role = role
+                user.save()
                 file_path = os.path.join(settings.BASE_DIR, 'users/users_txt', 'simple_users.txt')
                 with open(file_path, 'a') as f:
                     f.write(f'Username: {user.username}, Password: {password}\n')
-
                 send_mail(
-                    'Your new account',
-                    f'Your username is {user.username} and your password is {password}',
+                    f'Votre nouveau compte {role_labels.get(role, role)}',
+                    f'Bonjour {user.first_name},\n\nVotre nom d\'utilisateur est : {user.username}\nVotre mot de passe est : {password}\nVotre rôle sur la plateforme est : {role_labels.get(role, role)}.\n\nMerci de changer votre mot de passe après votre première connexion.',
                     settings.EMAIL_HOST_USER,
                     [email],
-                    fail_silently=False
-                )
+                    fail_silently=False,
+                    html_message=f"""
+                            <html>
+                            <body style='font-family: Arial, sans-serif; background: #f8f9fa; padding: 32px;'>
+                                <div style='max-width: 480px; margin: auto; background: #fff; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); padding: 32px;'>
+                                    <h2 style='color: #2d5be3; margin-bottom: 12px;'>Bienvenue sur Sunu Dash !</h2>
+                                    <p style='font-size: 16px; color: #222;'>Bonjour <strong>{user.first_name}</strong>,</p>
+                                    <p style='font-size: 16px; color: #222;'>Votre compte <b>{role_labels.get(role, role)}</b> a été créé avec succès. Voici vos identifiants&nbsp;:</p>
+                                    <ul style='font-size: 16px; color: #222; list-style: none; padding: 0;'>
+                                        <li><b>Nom d'utilisateur&nbsp;:</b> <span style='color: #2d5be3;'>{user.username}</span></li>
+                                        <li><b>Mot de passe&nbsp;:</b> <span style='color: #2d5be3;'>{password}</span></li>
+                                        <li><b>Rôle&nbsp;:</b> <span style='color: #2d5be3;'>{role_labels.get(role, role)}</span></li>
+                                    </ul>
+                                    <p style='font-size: 15px; color: #444; margin-top: 20px;'>Merci de changer votre mot de passe après votre première connexion pour garantir la sécurité de votre compte.</p>
+                                    <hr style='margin: 28px 0;'>
+                                    <p style='font-size: 13px; color: #999;'>Ceci est un message automatique. Merci de ne pas répondre directement à cet email.</p>
+                                </div>
+                            </body>
+                            </html>
+                            """
+                        )
 
                 created_users.append(user)
             except Exception as e:
                 return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
         # Renvoyer les numéros de ligne des adresses e-mail non valides
         if invalid_rows:
             return Response({'error': f'Invalid email addresses in rows: {", ".join(map(str, invalid_rows))}'}, status=status.HTTP_400_BAD_REQUEST)
@@ -851,11 +1054,29 @@ class PasswordResetRequestView(APIView):
 
             reset_link = f"https://sunu-dash.netlify.app/auth/new-password/{token.token}/"
             send_mail(
-                'Password Reset Request',
-                f'Click the link to reset your password: {reset_link}',
+                'Réinitialisation de votre mot de passe Sunu Dash',
+                f'Bonjour {user.first_name},\n\nPour réinitialiser votre mot de passe, cliquez sur ce lien : {reset_link}\nCe lien expirera dans 24h.',
                 from_email,
                 [user.email],
                 fail_silently=False,
+                html_message=f"""
+                <html>
+                <body style='font-family: Arial, sans-serif; background: #f8f9fa; padding: 32px;'>
+                    <div style='max-width: 480px; margin: auto; background: #fff; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); padding: 32px;'>
+                        <h2 style='color: #2d5be3; margin-bottom: 12px;'>Réinitialisation de votre mot de passe</h2>
+                        <p style='font-size: 16px; color: #222;'>Bonjour <strong>{user.first_name}</strong>,</p>
+                        <p style='font-size: 16px; color: #222;'>Vous avez demandé la réinitialisation de votre mot de passe Sunu Dash.</p>
+                        <p style='font-size: 16px; color: #222;'>Cliquez sur le bouton ci-dessous pour choisir un nouveau mot de passe&nbsp;:</p>
+                        <div style='margin: 24px 0;'>
+                            <a href='{reset_link}' style='background: #2d5be3; color: #fff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 16px;'>Réinitialiser mon mot de passe</a>
+                        </div>
+                        <p style='font-size: 14px; color: #555;'>Ce lien expirera dans 24 heures.</p>
+                        <hr style='margin: 28px 0;'>
+                        <p style='font-size: 13px; color: #999;'>Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.<br>Ceci est un message automatique. Merci de ne pas répondre directement à cet email.</p>
+                    </div>
+                </body>
+                </html>
+                """
             )
             return Response({"message": "Password reset email sent."}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -885,11 +1106,25 @@ class PasswordResetConfirmView(APIView):
             reset_token.delete()
 
             send_mail(
-                'Password Reset ',
-                f'Your password has been reset successfully.',
+                'Votre mot de passe Sunu Dash a été réinitialisé',
+                f'Bonjour {user.first_name},\n\nVotre mot de passe a bien été réinitialisé. Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.',
                 from_email,
                 [user.email],
                 fail_silently=False,
+                html_message=f"""
+                <html>
+                <body style='font-family: Arial, sans-serif; background: #f8f9fa; padding: 32px;'>
+                    <div style='max-width: 480px; margin: auto; background: #fff; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); padding: 32px;'>
+                        <h2 style='color: #2d5be3; margin-bottom: 12px;'>Mot de passe réinitialisé</h2>
+                        <p style='font-size: 16px; color: #222;'>Bonjour <strong>{user.first_name}</strong>,</p>
+                        <p style='font-size: 16px; color: #222;'>Votre mot de passe Sunu Dash a bien été réinitialisé.</p>
+                        <p style='font-size: 15px; color: #444;'>Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.</p>
+                        <hr style='margin: 28px 0;'>
+                        <p style='font-size: 13px; color: #999;'>Si vous n'êtes pas à l'origine de cette action, contactez immédiatement un administrateur.<br>Ceci est un message automatique. Merci de ne pas répondre directement à cet email.</p>
+                    </div>
+                </body>
+                </html>
+                """
             )
             return Response({"message": "Password has been reset successfully."}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
