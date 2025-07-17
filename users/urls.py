@@ -1,9 +1,11 @@
 from django.urls import path
-from .views import register_user, login_user, CreateCountryView, CreateCountryFromExcel, AssignTerritorialAdmin, ListCountriesView, CreateUserByTerritorialAdmin, PasswordResetRequestView, PasswordResetConfirmView, CreateTerritorialAdminView, CreateTerritorialAdminsFromExcel, CreateGlobalAdminView, GlobalAdminListView, GlobalAdminDetailView, GlobalAdminUpdateView, GlobalAdminDeleteView, CreateGlobalAdminsFromExcel, CountryDetailView, CountryUpdateView, CountryDeleteView, TerritorialAdminListView, TerritorialAdminDetailView, TerritorialAdminUpdateView, TerritorialAdminDeleteView, SimpleUserListView, SimpleUserDetailView, SimpleUserUpdateView, SimpleUserDeleteView, SuperuserCreateAPIView, GetConnectedUserByLogin, ToggleUserActiveStatusView
+from .views import register_user, login_user, CreateCountryView, CreateCountryFromExcel, AssignTerritorialAdmin, ListCountriesView, CreateUserByTerritorialAdmin, PasswordResetRequestView, PasswordResetConfirmView, CreateTerritorialAdminView, CreateTerritorialAdminsFromExcel, CreateGlobalAdminView, GlobalAdminListView, GlobalAdminDetailView, GlobalAdminUpdateView, GlobalAdminDeleteView, CreateGlobalAdminsFromExcel, CountryDetailView, CountryUpdateView, CountryDeleteView, TerritorialAdminListView, TerritorialAdminDetailView, TerritorialAdminUpdateView, TerritorialAdminDeleteView, SimpleUserListView, SimpleUserDetailView, SimpleUserUpdateView, SimpleUserDeleteView, SuperuserCreateAPIView, GetConnectedUserByLogin, ToggleUserActiveStatusView, VerifyPassword
 
 urlpatterns = [
+    path('verify_password/', VerifyPassword.as_view(), name='verify_password'),
     path('users/<int:pk>/toggle-active/', ToggleUserActiveStatusView.as_view(), name='toggle-user-active'),
     path('create_superuser/', SuperuserCreateAPIView.as_view(), name='create_superuser'),
+
 
     path('register/', register_user.as_view(), name='register_user'),
     path('login/', login_user.as_view(), name='login_user'),
@@ -29,6 +31,7 @@ urlpatterns = [
     path('countries/<int:pk>/update/', CountryUpdateView.as_view(), name='country_detail'),
     path('countries/<int:pk>/delete/', CountryDeleteView.as_view(), name='country_detail'),
 
+
     path('territorial_admins/assign/', AssignTerritorialAdmin.as_view(), name='assign_admin'),  
 
     
@@ -38,6 +41,7 @@ urlpatterns = [
     path('territorial_admins/<int:pk>/', TerritorialAdminDetailView.as_view(), name='country_detail'),
     path('territorial_admins/<int:pk>/update/', TerritorialAdminUpdateView.as_view(), name='country_detail'),
     path('territorial_admins/<int:pk>/delete/', TerritorialAdminDeleteView.as_view(), name='country_detail'),
+
 
     path('territorial_admins/users/create_user/', CreateUserByTerritorialAdmin.as_view(), name='create_user_by_territorial_admin'),
     path('territorial_admins/users/import_create_user/', CreateUserByTerritorialAdmin.as_view(), name='import_users_by_territorial_admin'),

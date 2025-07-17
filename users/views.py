@@ -147,6 +147,7 @@ class register_user(APIView):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
+
 class login_user(APIView):
     def post(self, request):
         login = request.data.get('login')
@@ -191,6 +192,23 @@ class GetConnectedUserByLogin(APIView):
             return Response(data, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class VerifyPassword(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        password = request.data.get('password')
+
+        if not password:
+            return Response({'error': 'Le mot de passe est requis'}, status=status.HTTP_400_BAD_REQUEST)
+
+        
+        user = request.user
+        if user.check_password(password):
+            return Response(True, status=status.HTTP_200_OK)
+        else:
+            return Response(False, status=status.HTTP_401_UNAUTHORIZED)
 
 
 
@@ -476,8 +494,13 @@ class CountryDetailView(APIView):
         except Country.DoesNotExist:
             return Response({"error": "Country not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        serializer = CountrySerializer(country)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        # On ne retourne que le nom et le code
+        data = {
+            "name": country.name,
+            "code": country.code
+        }
+        return Response(data, status=status.HTTP_200_OK)
+
 
 class CountryUpdateView(APIView):
     permission_classes = [IsAuthenticated, IsSuperUser|IsGlobalAdmin]
