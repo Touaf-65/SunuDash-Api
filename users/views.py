@@ -1077,7 +1077,7 @@ class PasswordResetRequestView(APIView):
             
             token = PasswordResetToken.objects.create(user=user)
 
-            reset_link = f"https://sunu-dash.netlify.app/auth/new-password/{token.token}/"
+            reset_link = f"https://sunudash.netlify.app/auth/new-password/{token.token}/"
             send_mail(
                 'Réinitialisation de votre mot de passe Sunu Dash',
                 f'Bonjour {user.first_name},\n\nPour réinitialiser votre mot de passe, cliquez sur ce lien : {reset_link}\nCe lien expirera dans 24h.',
