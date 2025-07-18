@@ -43,7 +43,6 @@ class ClientStatisticListView(APIView):
         else:
             if hasattr(user, 'country') and user.country:
                 country_id = user.country.id
-                # Contrôle strict : refuse si un autre country_id est envoyé
                 if 'country_id' in request.data and int(request.data['country_id']) != country_id:
                     return Response({"error": "Vous ne pouvez accéder qu'à votre propre pays."}, status=status.HTTP_403_FORBIDDEN)
             else:
@@ -63,25 +62,22 @@ class ClientStatisticListView(APIView):
         results = []
 
         for client in clients:
-            print(f"Client: {client.name} ({client.id})")
             nb_policies = Policy.objects.filter(client=client).count()
             insured_links = InsuredEmployer.objects.filter(employer=client)
-            print(f"  insured_links: {insured_links.count()}")
             nb_primary = insured_links.filter(role='primary').count()
             nb_total = insured_links.count()
             insured_ids = list(insured_links.values_list('insured_id', flat=True))
-            print(f"  insured_ids: {insured_ids}")
             claims = Claim.objects.filter(
                 insured_id__in=insured_ids,
                 claim_date__range=(date_start, date_end)
             )
-            print(f"  claims: {claims.count()}")
             invoice_ids = list(claims.values_list('invoice_id', flat=True))
-            print(f"  invoice_ids: {invoice_ids}")
             total_consumption = Invoice.objects.filter(id__in=invoice_ids).aggregate(total=Sum('claimed_amount'))['total'] or 0
             total_reimbursement = Invoice.objects.filter(id__in=invoice_ids).aggregate(total=Sum('reimbursed_amount'))['total'] or 0
+
+            total_consumption = int(total_consumption)
+            total_reimbursement = int(total_reimbursement)
             print(f"  total_consumption: {total_consumption}, total_reimbursement: {total_reimbursement}")
-            # ... reste du code ...
 
             results.append({
                 "client_id": client.id,
@@ -90,10 +86,10 @@ class ClientStatisticListView(APIView):
                 "nb_policies": nb_policies,
                 "nb_primary_insured": nb_primary,
                 "nb_total_insured": nb_total,
-                "total_consumption": str(total_consumption),
-               "total_reimbursement": str(total_reimbursement),
-                "type total consumption": type(str(total_consumption)).__name__,
-                "type total reimbursement": type(str(total_reimbursement)).__name__,
+                "total_consumption": total_consumption,
+                "total_reimbursement": total_reimbursement,
+                # "type total consumption": type(str(total_consumption)).__name__,
+                # "type total reimbursement": type(str(total_reimbursement)).__name__,
             })
         return Response(results, status=status.HTTP_200_OK)
 
