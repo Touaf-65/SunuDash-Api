@@ -305,10 +305,7 @@ class ClientStatisticView(APIView):
             else:
                 ts = int(calendar.timegm(parse(str(period)).timetuple())) * 1000
             policies_series.append([ts, count])
-        policies_series_formatted = [{
-            "name": "Nouvelles polices",
-            "data": policies_series
-        }]
+        policies_series_formatted = policies_series
 
         # Fonctions utilitaires (copiées de CountryStatisticsDetailView si besoin)
         from datetime import timedelta
@@ -360,19 +357,14 @@ class ClientStatisticView(APIView):
         policies_raw = [{'period': p['period'], 'value': p['count']} for p in policies]
         policies_full = fill_full_series(periods, policies_raw)
         policies_pairs = serie_to_pairs(policies_full)
-        policies_series_formatted = [{
-            "name": "Nouvelles polices",
-            "data": policies_pairs
-        }]
+        policies_series_formatted = policies_pairs
+        
 
         # --- PRIME SERIES ---
         prime_raw = [{'period': p['period'], 'value': float(p['prime'] or 0)} for p in primes]
         prime_full = fill_full_series(periods, prime_raw)
         prime_pairs = serie_to_pairs(prime_full)
-        prime_series_formatted = [{
-            "name": "Montant de la prime",
-            "data": prime_pairs
-        }]
+        prime_series_formatted = prime_pairs
 
         # --- NB ASSURES TOTAL SERIES ---
         nb_total_series = (
@@ -941,26 +933,6 @@ class ClientPolicyStatisticsView(APIView):
                     policy_id=policy_id,
                     insured_id__in=fam['family_ids'],
                     settlement_date__range=(date_start, date_end),
-                    invoice__isnull=False
-                )
-                .annotate(period=trunc('settlement_date'))
-                .values('period')
-                .annotate(total=Sum('invoice__reimbursed_amount'))
-                .order_by('period')
-            )
-            serie = {
-                "name": fam['principal'],
-                "data": [
-                    [int(period['period'].timestamp()) * 1000, float(period['total'] or 0)]
-                    for period in claims
-                ]
-            }
-            family_consumption_series.append(serie)
-        # 2. Top 5 partenaires
-        partners = (
-            Claim.objects.filter(
-                policy_id=policy_id,
-                settlement_date__range=(date_start, date_end),
                 invoice__isnull=False,
                 partner__isnull=False
             )
@@ -983,13 +955,10 @@ class ClientPolicyStatisticsView(APIView):
                 .annotate(total=Sum('invoice__reimbursed_amount'))
                 .order_by('period')
             )
-            serie = {
-                "name": pname,
-                "data": [
-                    [int(period['period'].timestamp()) * 1000, float(period['total'] or 0)]
-                    for period in claims
-                ]
-            }
+            serie = [
+                [int(period['period'].timestamp()) * 1000, float(period['total'] or 0)]
+                for period in claims
+            ]
             partner_consumption_series.append(serie)
         # 3. Top 5 actes
         acts = (
