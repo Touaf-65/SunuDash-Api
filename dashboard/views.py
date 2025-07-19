@@ -633,7 +633,6 @@ class ClientStatisticView(APIView):
 
 
 
-
 class ClientListPolicyStatisticsView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -659,9 +658,8 @@ class ClientListPolicyStatisticsView(APIView):
         else:
             trunc = TruncYear
 
-        # 1. Part de consommation par type d'assuré (toutes polices du client)
+        # 1. Part de consommation par type d'assuré (tous assurés du client sur la période choisie, toutes polices confondues)
         insured_ids = list(InsuredEmployer.objects.filter(employer_id=client_id).values_list('insured_id', flat=True))
-        role_map = {'primary': 'Assurés Principaux', 'spouse': 'Assurés Conjoints', 'child': 'Assurés Enfants'}
         claims_by_role = (
             Claim.objects.filter(
                 insured_id__in=insured_ids,
@@ -671,19 +669,16 @@ class ClientListPolicyStatisticsView(APIView):
             .values('insured__insured_clients__role')
             .annotate(total=Sum('invoice__reimbursed_amount'))
         )
-        total = sum(float(c['total'] or 0) for c in claims_by_role)
-        # On prépare un mapping role -> pourcentage
-        role_percents = {'primary': 0, 'spouse': 0, 'child': 0}
+        role_totals = {'primary': 0, 'spouse': 0, 'child': 0}
         for c in claims_by_role:
             role = c['insured__insured_clients__role']
             value = float(c['total'] or 0)
-            percent = (value / total * 100) if total else 0
-            if role in role_percents:
-                role_percents[role] = percent
+            if role in role_totals:
+                role_totals[role] = value
         role_consumption_share = [
-            role_percents['primary'],
-            role_percents['spouse'],
-            role_percents['child'],
+            role_totals['primary'],
+            role_totals['spouse'],
+            role_totals['child'],
         ]
 
         # Générer toutes les périodes pour aligner les séries
@@ -718,6 +713,7 @@ class ClientListPolicyStatisticsView(APIView):
                 return f"{dt.year}-Q{quarter}"
             return str(dt)
         periods_labels = [date_label(period) for period in periods]
+        policy_consumption_series_labels = periods_labels  # pour l'axe X du diagramme
         # 2. Evolution consommation par police
         policies = Policy.objects.filter(client_id=client_id)
         policy_consumption_series = []
@@ -758,6 +754,7 @@ class ClientListPolicyStatisticsView(APIView):
                 total_reimbursed=Sum('invoice__reimbursed_amount')
             )
             policies_table.append({
+                "policy_id": policy.id,
                 "policy_number": policy.policy_number,
                 "nb_primary": nb_primary,
                 "nb_total": nb_total,
@@ -765,12 +762,32 @@ class ClientListPolicyStatisticsView(APIView):
                 "claimed": float(agg['total_claimed'] or 0),
             })
 
-        return Response({
+        # Contrôle de cohérence si le client n'a qu'une seule police
+        consistency_warning = None
+        if len(policies_table) == 1:
+            total_role = sum(role_consumption_share)
+            policy_total = policies_table[0]["consumption"]
+            if abs(total_role - policy_total) > 1e-2:  # tolérance flottante
+                consistency_warning = {
+                    "sum_role_consumption_share": total_role,
+                    "policy_consumption": policy_total,
+                    "diff": total_role - policy_total,
+                    "message": "Incohérence détectée : la somme des consommations par type ne correspond pas à la consommation totale de la police."
+                }
+        # Récupère le client pour ajouter id et nom
+        client = Client.objects.filter(id=client_id).first()
+        response_data = {
+            "client_id": client.id if client else client_id,
+            "client_name": client.name if client else None,
             "granularity": granularity,
             "role_consumption_share": role_consumption_share,
             "policy_consumption_series": policy_consumption_series,
+            "policy_consumption_series_labels": policy_consumption_series_labels,
             "policies_table": policies_table,
-        }, status=status.HTTP_200_OK)
+        }
+        if consistency_warning:
+            response_data["consistency_warning"] = consistency_warning
+        return Response(response_data, status=status.HTTP_200_OK)
 
 
 
