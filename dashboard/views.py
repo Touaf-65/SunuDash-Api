@@ -790,7 +790,6 @@ class ClientListPolicyStatisticsView(APIView):
         return Response(response_data, status=status.HTTP_200_OK)
 
 
-
 class ClientPolicyStatisticsView(APIView):
     permission_classes = [IsAuthenticated, IsSuperUser | IsGlobalAdmin | IsTerritorialAdmin]
 
@@ -944,19 +943,21 @@ class ClientPolicyStatisticsView(APIView):
         top_families = sorted(family_consumptions, key=lambda x: x['total'], reverse=True)[:5]
         # Séries temporelles
         family_consumption_series = []
+        partners = []  # Toujours défini, même si jamais rempli
         for fam in top_families:
             claims = (
                 Claim.objects.filter(
                     policy_id=policy_id,
                     insured_id__in=fam['family_ids'],
                     settlement_date__range=(date_start, date_end),
-                invoice__isnull=False,
-                partner__isnull=False
+                    invoice__isnull=False,
+                    partner__isnull=False
+                )
+                .values('partner', 'partner__name')
+                .annotate(total=Sum('invoice__reimbursed_amount'))
+                .order_by('-total')[:5]
             )
-            .values('partner', 'partner__name')
-            .annotate(total=Sum('invoice__reimbursed_amount'))
-            .order_by('-total')[:5]
-        )
+            partners = list(claims)  # partners sera au moins []
         partner_tuples = [(p['partner'], p['partner__name']) for p in partners]
         partner_consumption_series = []
         for partner_id, pname in partner_tuples:
@@ -1123,6 +1124,36 @@ class ClientPolicyStatisticsView(APIView):
         nb_total_evolution_rate = compute_evolution_rate(nb_total_series)
         actual_nb_total_value = get_actual_value(nb_total_series)
 
+        # --- Série par type d'assurés (format custom) ---
+        role_map = {
+            'primary': 'Assurés Principaux',
+            'spouse': 'Assurés conjoints',
+            'child': 'Assurés enfants',
+            'other': 'Autres assurés'
+        }
+        roles = ['primary', 'spouse', 'child', 'other']
+        nb_assures_par_type_series = []
+        for role in roles:
+            data = []
+            for i, period in enumerate(periods):
+                if role == 'other':
+                    count = InsuredEmployer.objects.filter(
+                        policy_id=policy_id,
+                        start_date__lte=period
+                    ).exclude(role__in=['primary','spouse','child'])\
+                     .filter(Q(end_date__gt=period) | Q(end_date__isnull=True)).count()
+                else:
+                    count = InsuredEmployer.objects.filter(
+                        policy_id=policy_id,
+                        role=role,
+                        start_date__lte=period
+                    ).filter(Q(end_date__gt=period) | Q(end_date__isnull=True)).count()
+                data.append({"x": date_label(period, granularity), "y": count})
+            nb_assures_par_type_series.append({
+                "name": role_map[role],
+                "data": data
+            })
+
         # --- 3. Top 5 familles consommation ---
         principals = InsuredEmployer.objects.filter(policy_id=policy_id, role='primary')
         family_consumptions = []
@@ -1180,6 +1211,8 @@ class ClientPolicyStatisticsView(APIView):
             .order_by('-total')[:5]
         )
         act_names = [a['act__label'] for a in acts]
+        # Correction : labels X pour les catégories d'actes
+        top5_categories_labels = [date_label(period) for period in periods]
         top5_categories_actes_series = []
         for aname in act_names:
             claims = (
@@ -1200,51 +1233,48 @@ class ClientPolicyStatisticsView(APIView):
                 "name": aname,
                 "data": data
             })
-        top5_categories_labels = [date_label(period) for period in periods]
 
-        # --- 5. Top 5 partenaires ---
-        partners = (
-            Claim.objects.filter(
-                policy_id=policy_id,
-                settlement_date__range=(date_start, date_end),
-                invoice__isnull=False,
-                partner__isnull=False
-            )
-            .values('partner', 'partner__name')
-            .annotate(total=Sum('invoice__reimbursed_amount'))
-            .order_by('-total')[:5]
-        )
-        partner_tuples = [(p['partner'], p['partner__name']) for p in partners]
-        top5_partners_conso_series = []
+        # --- 5. Top 5 partenaires (total police/période) ---
+        partners = list(Claim.objects.filter(
+            policy_id=policy_id,
+            settlement_date__range=(date_start, date_end),
+            invoice__isnull=False,
+            partner__isnull=False
+        ).values('partner', 'partner__name')
+         .annotate(total=Sum('invoice__reimbursed_amount'))
+         .order_by('-total')[:5])
+        partner_tuples = [(p['partner'], p['partner__name']) for p in partners] if partners else []
+        # Correction : labels X pour les partenaires
+        top5_partners_labels = [date_label(period) for period in periods]
+        partner_consumption_series = []
         for partner_id, pname in partner_tuples:
-            claims = (
+            claims_partner = (
                 Claim.objects.filter(
                     policy_id=policy_id,
                     settlement_date__range=(date_start, date_end),
                     invoice__isnull=False,
-                    partner__name=pname
+                    partner_id=partner_id
                 )
                 .annotate(period=trunc('settlement_date'))
                 .values('period')
                 .annotate(total=Sum('invoice__reimbursed_amount'))
                 .order_by('period')
             )
-            claims_map = {c['period']: float(c['total'] or 0) for c in claims}
-            data = [claims_map.get(period, 0) for period in periods]
-            top5_partners_conso_series.append({
+            claims_map_partner = {c['period']: float(c['total'] or 0) for c in claims_partner}
+            data_partner = [claims_map_partner.get(period, 0) for period in periods]
+            partner_consumption_series.append({
                 "name": pname,
-                "data": data
+                "data": data_partner
             })
-        top5_partners_labels = [date_label(period) for period in periods]
 
-        # --- 6. Top partenaires table (id, name, claimed, reimbursed) ---
+        # --- 6. Tableau top partenaires ---
         top_partners_table = []
         for partner_id, pname in partner_tuples:
             agg = Claim.objects.filter(
                 policy_id=policy_id,
                 settlement_date__range=(date_start, date_end),
                 invoice__isnull=False,
-                partner__name=pname
+                partner_id=partner_id
             ).aggregate(
                 total_claimed=Sum('invoice__claimed_amount'),
                 total_reimbursed=Sum('invoice__reimbursed_amount')
@@ -1257,8 +1287,14 @@ class ClientPolicyStatisticsView(APIView):
             })
 
         # --- Réponse finale ---
+        # Ajout du numéro de police
+        try:
+            policy_number = Policy.objects.get(pk=policy_id).policy_number
+        except Policy.DoesNotExist:
+            policy_number = None
         return Response({
             "granularity": granularity,
+            "policy_number": policy_number,
             "consumption_series": consumption_series,
             "consumption_evolution_rate": consumption_evolution_rate,
             "actual_consumption_value": actual_consumption_value,
@@ -1271,13 +1307,15 @@ class ClientPolicyStatisticsView(APIView):
             "nb_total_evolution_rate": nb_total_evolution_rate,
             "actual_nb_total_value": actual_nb_total_value,
 
+            "nb_assures_par_type_series": nb_assures_par_type_series,
+
             "top5_familles_conso_series": top5_familles_conso_series,
             "top5_familles_labels": top5_familles_labels,
 
             "top5_categories_actes_series": top5_categories_actes_series,
             "top5_categories_labels": top5_categories_labels,
 
-            "top5_partners_conso_series": top5_partners_conso_series,
+            "top5_partners_conso_series": partner_consumption_series,
             "top5_partners_labels": top5_partners_labels,
 
             "top_partners_table": top_partners_table
