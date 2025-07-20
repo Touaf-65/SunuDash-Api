@@ -1289,12 +1289,40 @@ class ClientPolicyStatisticsView(APIView):
         # --- Réponse finale ---
         # Ajout du numéro de police
         try:
-            policy_number = Policy.objects.get(pk=policy_id).policy_number
+            policy = Policy.objects.get(pk=policy_id)
+            policy_number = policy.policy_number
         except Policy.DoesNotExist:
+            policy = None
             policy_number = None
+
+        # Calcul pourcentage consommation police vs autres polices du client
+        consommation_percentages_client_polices = [0, 0]
+        if policy is not None:
+            client_id = policy.client_id
+            # Consommation police X
+            police_conso = Claim.objects.filter(
+                policy_id=policy_id,
+                settlement_date__range=(date_start, date_end),
+                invoice__isnull=False
+            ).aggregate(total=Sum('invoice__reimbursed_amount'))['total'] or 0
+            # Consommation totale client (toutes polices)
+            client_conso = Claim.objects.filter(
+                policy__client_id=client_id,
+                settlement_date__range=(date_start, date_end),
+                invoice__isnull=False
+            ).aggregate(total=Sum('invoice__reimbursed_amount'))['total'] or 0
+            # Consommation autres polices
+            autres_conso = client_conso - police_conso
+            if client_conso > 0:
+                consommation_police_vs_autres = [
+                    round(100 * police_conso / client_conso, 2),
+                    round(100 * autres_conso / client_conso, 2)
+                ]
+
         return Response({
             "granularity": granularity,
             "policy_number": policy_number,
+            "consommation_percentages_client_polices": consommation_percentages_client_polices,
             "consumption_series": consumption_series,
             "consumption_evolution_rate": consumption_evolution_rate,
             "actual_consumption_value": actual_consumption_value,
